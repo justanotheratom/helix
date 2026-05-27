@@ -65,6 +65,25 @@ python -m helix_cli status <job-id>
 consumer config (`repo_id`, ports, Langfuse project) is read from the
 `.helix.toml` in the directory you run from.
 
+## Dev loop — edit Helix code without rebuilds
+
+`helix dev up` bind-mounts this repo's source into the containers
+(`deploy/docker-compose.dev.yml`), so code edits don't need an image rebuild
+and **all data persists** (named volumes are untouched):
+
+```bash
+python -m helix_cli dev up        # source-mounted; api runs with --reload
+# ...edit code...
+#   api      → hot-reloads automatically
+#   worker   → python -m helix_cli dev restart   (≈1s, not a rebuild)
+#   runtime/ → picked up on the next job (fresh subprocess), no restart
+python -m helix_cli dev up --rebuild   # only when deps / a Dockerfile change
+```
+
+A rebuild is only needed when dependencies or a `Dockerfile` change. Jobs,
+snapshots, and artifacts survive restarts and rebuilds alike; only
+`docker compose down -v` wipes them.
+
 ## New consumer
 
 ```bash

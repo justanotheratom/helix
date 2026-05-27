@@ -39,11 +39,19 @@ def _env_example_path() -> str:
     return os.path.join(_deploy_dir(), ".env.example")
 
 
+# Extra compose override files (e.g. the dev bind-mount override), set by the
+# `dev` commands before building the compose command.
+_OVERRIDE_FILES: list[str] = []
+
+
 def _compose_cmd(*extra: str) -> list[str]:
+    files = ["-f", os.path.join(_deploy_dir(), "docker-compose.yml")]
+    for ov in _OVERRIDE_FILES:
+        files += ["-f", os.path.join(_deploy_dir(), ov)]
     return [
         "docker", "compose",
         "-p", _cfg().compose_project,
-        "-f", os.path.join(_deploy_dir(), "docker-compose.yml"),
+        *files,
         "--env-file", _env_path(),
         *extra,
     ]
@@ -117,11 +125,29 @@ def cmd_up(args: argparse.Namespace) -> int:
 
 
 def cmd_dev_up(args: argparse.Namespace) -> int:
-    """Helix-repo dev path: always (re)build the generic images from the local
-    helix/ tree, then bring the stack up. (`helix up` pulls prebuilt images
-    once a registry exists — Phase 3; today it builds-if-missing.)"""
-    args.rebuild = True
+    """Helix-repo dev path: bind-mount the source so code edits skip rebuilds.
+
+    Adds docker-compose.dev.yml (mounts api/worker/runtime/common; api runs
+    with --reload). Builds the base image only if missing (or with --rebuild
+    when deps/Dockerfile changed). Edit loop afterward:
+      - api      : hot-reloads automatically.
+      - worker   : `helix dev restart` (process restart, not a rebuild).
+      - runtime/ : next job picks it up (fresh subprocess), no restart.
+    Data (named volumes) is untouched throughout."""
+    _OVERRIDE_FILES.append("docker-compose.dev.yml")
+    if not getattr(args, "rebuild", False):
+        args.rebuild = False
     return cmd_up(args)
+
+
+def cmd_dev_restart(args: argparse.Namespace) -> int:
+    """Restart worker (and/or api) in-place to pick up bind-mounted code
+    changes — a ~1s process restart, no rebuild, data preserved."""
+    _OVERRIDE_FILES.append("docker-compose.dev.yml")
+    services = args.services or ["helix-worker"]
+    subprocess.run(_compose_cmd("restart", *services), check=True, env=_compose_env())
+    console.print(f"[green]restarted[/green] {', '.join(services)}")
+    return 0
 
 
 def cmd_gc(args: argparse.Namespace) -> int:

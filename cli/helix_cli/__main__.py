@@ -9,7 +9,7 @@ from .export import cmd_export
 from .init import cmd_init
 from .snapshot import cmd_snapshot_publish
 from .jobs import cmd_cancel, cmd_list, cmd_logs, cmd_open, cmd_status, cmd_traces
-from .stack import cmd_bootstrap, cmd_dev_up, cmd_down, cmd_gc, cmd_status as cmd_stack_status, cmd_up
+from .stack import cmd_bootstrap, cmd_dev_restart, cmd_dev_up, cmd_down, cmd_gc, cmd_status as cmd_stack_status, cmd_up
 from .submit import cmd_submit_compile, cmd_submit_eval
 
 
@@ -37,12 +37,18 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("--rebuild", action="store_true")
     up.set_defaults(func=cmd_up)
 
-    dev = sub.add_parser("dev", help="Helix-repo dev commands")
+    dev = sub.add_parser("dev", help="Helix-repo dev commands (bind-mounted source)")
     dev_sub = dev.add_subparsers(dest="dev_cmd", required=True)
     dev_up = dev_sub.add_parser(
-        "up", help="Build the generic images from the local helix/ tree, then up"
+        "up", help="Up with source bind-mounted (api hot-reloads); no rebuild needed"
     )
+    dev_up.add_argument("--rebuild", action="store_true", help="force-rebuild the base image (deps/Dockerfile changed)")
     dev_up.set_defaults(func=cmd_dev_up)
+    dev_restart = dev_sub.add_parser(
+        "restart", help="Restart worker/api to pick up code edits (no rebuild)"
+    )
+    dev_restart.add_argument("services", nargs="*", help="default: helix-worker")
+    dev_restart.set_defaults(func=cmd_dev_restart)
 
     dn = sub.add_parser("down", help="Tear the stack down (volumes retained)")
     dn.set_defaults(func=cmd_down)

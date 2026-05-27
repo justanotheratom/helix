@@ -1,0 +1,38 @@
+# Dev override — bind-mount Helix source so code edits skip a rebuild.
+#
+# Use via `helix dev up` (which adds this file), or directly:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Loop:
+#   - api      : hot-reloads (uvicorn --reload) on edit, no restart.
+#   - worker   : `helix dev restart` (a ~1s process restart, NOT a rebuild)
+#                picks up worker/ + common/ edits.
+#   - runtime/ : picked up on the NEXT job automatically (each job spawns a
+#                fresh subprocess from /helix-runtime) — no restart needed.
+#
+# Paths are relative to deploy/ (the compose project dir). Named volumes
+# (postgres/minio/redis + snapshot/oob/venv caches) are untouched, so all
+# data — jobs, snapshots, artifacts — persists across restarts.
+
+services:
+  helix-api:
+    volumes:
+      - ../api:/app/helix_api_pkg
+      - ../common/helix_config.py:/app/helix_config.py
+      - ../openapi/openapi.yaml:/app/openapi.yaml
+    command:
+      - uvicorn
+      - helix_api_pkg.helix_api.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=*
+      - --reload
+
+  helix-worker:
+    volumes:
+      - ../worker:/app/helix_worker_pkg
+      - ../common/helix_config.py:/app/helix_config.py
+      - ../runtime:/helix-runtime
