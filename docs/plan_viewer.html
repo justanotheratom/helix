@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Helix — Plan Viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --fg: #e6edf3; --muted: #8b949e;
+    --accent: #58a6ff; --good: #3fb950; --warn: #d29922; --bad: #f85149;
+    --border: #30363d;
+  }
+  html, body { background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0; padding: 0; line-height: 1.5; }
+  header { padding: 24px 32px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0 0 6px 0; font-size: 22px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  nav { position: sticky; top: 0; background: var(--bg); padding: 0 32px;
+    border-bottom: 1px solid var(--border); display: flex; gap: 4px;
+    overflow-x: auto; z-index: 10; }
+  nav button { background: transparent; color: var(--muted); border: 0;
+    padding: 12px 14px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  main { max-width: 1100px; margin: 0 auto; padding: 28px 32px 80px; }
+  section { display: block; }
+  /* Inactive sections: visually hidden but still laid out so mermaid can render */
+  body.tabs-ready section:not(.active) { display: none; }
+  section h2 { font-size: 19px; margin-top: 0; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  section h3 { font-size: 15px; color: var(--accent); margin-top: 22px; }
+  .lede { color: var(--muted); font-size: 14px; margin-bottom: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 18px; margin: 14px 0; }
+  .card h4 { margin: 0 0 6px; font-size: 14px; color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  pre { background: #0a0d12; border: 1px solid var(--border);
+    border-radius: 6px; padding: 12px 14px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin: 8px 0; }
+  th, td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
+  th { background: #1c2128; color: var(--muted); font-weight: 600; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; margin-right: 4px; }
+  .tag.good { background: rgba(63,185,80,.15); color: var(--good); }
+  .tag.warn { background: rgba(210,153,34,.15); color: var(--warn); }
+  .tag.bad  { background: rgba(248,81,73,.15);  color: var(--bad);  }
+  .tag.info { background: rgba(88,166,255,.15); color: var(--accent); }
+  ul { margin: 6px 0 6px 20px; padding: 0; }
+  li { margin: 3px 0; }
+  .mermaid { background: var(--panel); padding: 14px; border-radius: 8px;
+    border: 1px solid var(--border); }
+  .kv { display: grid; grid-template-columns: 160px 1fr; gap: 6px 14px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--border); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Helix — Compile/Eval Job Runner Service</h1>
+  <div class="sub">Local, docker-compose-based replacement for <code>launch_compile_eval.py</code>. One port (<code>127.0.0.1:7000</code>). One CLI. One UI. Postgres-durable queue. OpenAPI-defined contract. Langfuse fronted under <code>/langfuse</code> with silent auto-SSO.</div>
+</header>
+
+<nav id="nav">
+  <button data-tab="overview" class="active">Overview</button>
+  <button data-tab="stack">Stack</button>
+  <button data-tab="lifecycle">Job lifecycle</button>
+  <button data-tab="submit">Submit flow</button>
+  <button data-tab="execution">Execution contract</button>
+  <button data-tab="data">Data model</button>
+  <button data-tab="numbering">Run numbering</button>
+  <button data-tab="cli">CLI</button>
+  <button data-tab="api">API</button>
+  <button data-tab="risks">Risks &amp; guarantees</button>
+</nav>
+
+<main>
+
+<!-- OVERVIEW -->
+<section id="overview" class="active">
+  <h2>Why Helix?</h2>
+  <div class="lede">DSPy compile + eval today is a hand-rolled launcher writing logs to <code>/tmp</code> and results into the git tree. Helix replaces it with one local service: durable jobs, blob-stored artifacts, a UI, Langfuse traces deep-linked per run.</div>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>Goals</h4>
+      <ul>
+        <li>One URL, one CLI, one source of truth.</li>
+        <li>First-class concepts: program, version, dataset, split, compile→eval lineage.</li>
+        <li>Cancelable, restartable, durable jobs.</li>
+        <li>Trace correlation: every job carries a Langfuse <code>environment</code> tag.</li>
+        <li><code>compile.py</code> / <code>evaluate.py</code> stay unchanged — they're baked into the worker image.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Non-goals (v1)</h4>
+      <ul>
+        <li>Multi-user auth / remote hosting.</li>
+        <li>Run comparison UI (defer; deep-link to <code>EVAL_SUMMARY.md</code>).</li>
+        <li>Artifact retention policies — keep everything.</li>
+        <li>Rewriting <code>compile.py</code> / <code>evaluate.py</code>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>One-glance flow</h3>
+  <div class="mermaid">
+flowchart LR
+  D[Developer / Claude]:::user --> CLI[helix CLI]:::tool
+  CLI -->|bundle.tar.gz + metadata| API[helix-api FastAPI]:::svc
+  API -->|INSERT job 'queued'| DB[(Postgres)]:::store
+  WORKER[helix-worker]:::svc -->|FOR UPDATE SKIP LOCKED| DB
+  WORKER -->|runs compile.py / evaluate.py| OFS[overlayfs repo]:::ephem
+  WORKER -->|artifacts| BLOB[(minio)]:::store
+  WORKER -->|OTel traces| LF[Langfuse]:::svc
+  CLI --> UI[helix-ui]:::svc
+  UI --> API
+  UI -. SSO link .-> API
+  API -. mint cookie .-> LF
+  classDef user fill:#1f2937,stroke:#58a6ff,color:#e6edf3
+  classDef tool fill:#0d1117,stroke:#8b949e,color:#e6edf3
+  classDef svc  fill:#161b22,stroke:#3fb950,color:#e6edf3
+  classDef store fill:#161b22,stroke:#d29922,color:#e6edf3
+  classDef ephem fill:#161b22,stroke:#8b949e,color:#e6edf3,stroke-dasharray:4 3
+  </div>
+
+  <h3>User stories</h3>
+  <ol>
+    <li><code>helix bootstrap</code> once → <code>helix up</code>.</li>
+    <li><code>helix submit compile &lt;yaml&gt;…</code> returns <code>{job_id, run_label, ui_url, langfuse_url}</code> per job.</li>
+    <li><code>helix list --program X</code> filters by program/version/dataset/split/status.</li>
+    <li>Click "Open in Langfuse" from job detail — only that job's traces are visible.</li>
+    <li><code>helix cancel &lt;id&gt;</code> — SIGTERM the process group, SIGKILL after 5s, keep partial artifacts.</li>
+    <li><code>helix submit eval &lt;yaml&gt; --compile-job &lt;uuid&gt;</code> — Helix injects the parent's <code>program.pkl</code>; lineage recorded.</li>
+  </ol>
+</section>
+
+<!-- STACK -->
+<section id="stack">
+  <h2>Stack — one <code>docker-compose.yml</code></h2>
+  <div class="lede">Caddy on <code>127.0.0.1:7000</code> is the <strong>only</strong> port bound to the host. Helix UI, Helix API, Langfuse UI, and Langfuse media all live behind it under subpaths. Auto-SSO bridges the no-login Helix UX with Langfuse's NextAuth requirement.</div>
+
+  <div class="mermaid">
+flowchart TB
+  subgraph EXT["host loopback"]
+    P7[127.0.0.1:7000]:::port
+  end
+  subgraph HELIX["compose project: kincalendar-helix"]
+    direction TB
+    CADDY[caddy]:::svc
+    API[helix-api · FastAPI]:::svc
+    UI[helix-ui · Next.js SPA]:::svc
+    W1[helix-worker · 1..N replicas]:::svc
+    DB[(helix-db · postgres:17)]:::store
+    BLOB[(helix-blob · minio)]:::store
+    REDIS[(helix-redis · pub/sub + cancel)]:::store
+    subgraph LF["Langfuse sub-stack (internal only)"]
+      LFW[langfuse-web]:::svc
+      LFWORK[langfuse-worker]:::svc
+      LFDB[(pg)]:::store
+      LFCH[(clickhouse)]:::store
+      LFS3[(minio)]:::store
+      LFR[(redis)]:::store
+    end
+  end
+  P7 --> CADDY
+  CADDY -->|/api/*| API
+  CADDY -->|/langfuse/*| LFW
+  CADDY -->|/langfuse-media/*| LFS3
+  CADDY -->|/| UI
+  API -. SSO POST .-> LFW
+  API --> DB
+  API --> BLOB
+  API --> REDIS
+  W1 --> DB
+  W1 --> BLOB
+  W1 --> REDIS
+  W1 -. OTel .-> LFW
+  LFW --> LFDB
+  LFW --> LFCH
+  LFW --> LFS3
+  LFW --> LFR
+  classDef svc fill:#161b22,stroke:#3fb950,color:#e6edf3
+  classDef store fill:#161b22,stroke:#d29922,color:#e6edf3
+  classDef port fill:#0d1117,stroke:#58a6ff,color:#58a6ff
+  </div>
+
+  <table>
+    <tr><th>Service</th><th>Role</th><th>Why this choice</th></tr>
+    <tr><td>caddy</td><td>Reverse proxy for <code>/api</code>, <code>/langfuse</code>, <code>/langfuse-media</code>, <code>/</code></td><td>One port (<code>:7000</code>). One cookie origin. One place for future TLS.</td></tr>
+    <tr><td>helix-api</td><td>Job CRUD, bundle upload, log SSE, cancel pub, <strong>Langfuse SSO trampoline</strong></td><td>FastAPI, generated from <code>openapi.yaml</code>.</td></tr>
+    <tr><td>helix-worker</td><td>Claims jobs, runs <code>compile.py</code>/<code>evaluate.py</code>, uploads artifacts</td><td>Repo baked into image; overlayfs per job.</td></tr>
+    <tr><td>helix-db (postgres)</td><td>Job metadata <em>and</em> queue</td><td><code>FOR UPDATE SKIP LOCKED</code> = one durable system, no redis in the durability path.</td></tr>
+    <tr><td>helix-blob (minio)</td><td>Bundles + artifacts</td><td>S3-compatible; supports streaming + tar export.</td></tr>
+    <tr><td>helix-redis</td><td>Live log pub/sub + cancel signals</td><td>Non-durable; transient signals only.</td></tr>
+    <tr><td>langfuse stack</td><td>Trace store, served under <code>/langfuse/*</code>; media under <code>/langfuse-media/*</code>. Internal only — no host port.</td><td>Requires a langfuse-web image built with <code>NEXT_PUBLIC_BASE_PATH=/langfuse</code>; <code>NEXTAUTH_URL</code> + media endpoint rewritten to <code>:7000</code>.</td></tr>
+  </table>
+
+  <h3>Auto-SSO: how no-login Helix talks to a login-required Langfuse</h3>
+  <div class="lede">Langfuse-web requires a NextAuth session. Helix mints it server-side so the user never sees a Langfuse login screen.</div>
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as User browser (127.0.0.1:7000)
+  participant C as caddy
+  participant API as helix-api
+  participant LFW as langfuse-web
+
+  U->>C: GET /api/langfuse/sso?return_to=/langfuse/project/.../traces?environment=run_xyz
+  C->>API: forward
+  API->>LFW: POST /api/auth/callback/credentials<br/>(seeded LANGFUSE_INIT_USER creds, compose-internal)
+  LFW-->>API: 200 + Set-Cookie next-auth.session-token
+  API-->>C: 302 Location: /langfuse/.../traces?...<br/>Set-Cookie next-auth.session-token
+  C-->>U: 302 + Set-Cookie
+  U->>C: GET /langfuse/.../traces (carrying cookie)
+  C->>LFW: forward (authenticated)
+  LFW-->>U: traces page (already logged in)
+  </div>
+  <ul>
+    <li><strong>Credentials never leave the stack.</strong> They live in the compose <code>.env</code> only.</li>
+    <li><strong>Silent re-mint on every click</strong> — the SSO endpoint always POSTs fresh, so cookie expiry / cleared browser state never surface a login screen.</li>
+    <li><strong>Same origin is what makes it work.</strong> Because <code>/api/*</code> and <code>/langfuse/*</code> are both served from <code>127.0.0.1:7000</code>, the <code>Set-Cookie</code> attached to the 302 is in scope when the browser follows it.</li>
+  </ul>
+</section>
+
+<!-- LIFECYCLE -->
+<section id="lifecycle">
+  <h2>Job lifecycle</h2>
+  <div class="lede">Every job moves through these states. Transitions are conditional on a fencing token (<code>worker_id + attempt</code>) so a stale process can't corrupt a job that has been requeued.</div>
+
+  <div class="mermaid">
+stateDiagram-v2
+  [*] --> queued: helix submit
+  queued --> running: worker UPDATE … SKIP LOCKED RETURNING
+  running --> running: heartbeat extends lease_expires_at every 5s
+  running --> succeeded: subprocess exit 0, artifacts uploaded
+  running --> failed: subprocess exit != 0
+  running --> cancelled: SIGTERM pg → SIGKILL pg after 5s
+  running --> queued: lease expired / worker dead → recovery requeue (attempt++)
+  succeeded --> [*]
+  failed --> [*]
+  cancelled --> [*]
+  </div>
+
+  <h3>Cancel sequence</h3>
+  <pre>pgid = os.getpgid(proc.pid)         # == proc.pid because start_new_session=True
+os.killpg(pgid, signal.SIGTERM)
+try:
+    proc.wait(timeout=5)
+except subprocess.TimeoutExpired:
+    os.killpg(pgid, signal.SIGKILL)
+    proc.wait()</pre>
+  <div class="lede">Process-group kill catches DSPy/litellm child processes that would orphan under a raw <code>os.kill(pid, …)</code>.</div>
+
+  <h3>Recovery (lease expired)</h3>
+  <pre>UPDATE jobs
+SET status='queued', worker_id=NULL, lease_expires_at=NULL
+WHERE status='running'
+  AND (lease_expires_at &lt; now()
+       OR worker_id NOT IN (
+         SELECT worker_id FROM worker_heartbeats
+         WHERE last_seen &gt; now() - interval '30 seconds'
+       ));</pre>
+</section>
+
+<!-- SUBMIT FLOW -->
+<section id="submit">
+  <h2>Submit flow — what happens when you run <code>helix submit compile</code></h2>
+
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as Developer
+  participant C as helix CLI
+  participant A as helix-api
+  participant DB as Postgres
+  participant B as helix-blob
+  participant W as helix-worker
+
+  U->>C: helix submit compile cfg.yaml
+  C->>A: GET /api/runtime/baked-sha
+  A-->>C: {baked_sha, workers: […]}  (refuses if workers diverge)
+  C->>C: compute overlay bundle:<br/>(a) config file<br/>(b) git diff vs baked_sha under programs/<br/>(c) git ls-files --others<br/>(D|R or any baked-root dirt → hard error)
+  C->>A: POST /api/jobs/compile  (multipart: bundle.tar.gz + metadata)
+  A->>B: PUT bundle blob
+  A->>DB: INSERT INTO jobs (status='queued', baked_sha, run_label, …)
+  A-->>C: {job_id, run_label, ui_url, langfuse_url}
+  C-->>U: print URLs
+
+  W->>DB: UPDATE jobs … FOR UPDATE SKIP LOCKED → claim
+  W->>B: GET bundle.tar.gz
+  W->>W: mount overlayfs (lower=/repo-snapshot ro, upper=tmpfs), extract bundle on top
+  W->>W: allocate emitted_run_number, seed placeholder dirs
+  W->>W: spawn compile.py in new process group
+  loop heartbeat every 5s
+    W->>DB: UPSERT worker_heartbeats, extend lease
+  end
+  W->>B: upload compile/, gepa_logs/, program.hash, config
+  W->>DB: INSERT artifacts (fenced on worker_id+attempt)
+  W->>DB: UPDATE jobs SET status='succeeded' (fenced)
+  </div>
+
+  <h3>The overlay bundle in one paragraph</h3>
+  <p>The CLI ships <strong>only</strong> what's changed under <code>backend/ai/programs/</code> (the active iteration surface), excluding <code>results/**</code>. Any dirt under baked-only roots (<code>backend/ai/api/</code>, <code>backend/ai/runtime/</code>, <code>.claude/skills/ai-utils/</code>, …) is a hard error pointing the user at <code>helix up --rebuild</code>. Deletions and renames are also hard errors in v1 (tombstones are deferred). If your tree is clean against <code>baked_sha</code>, the bundle is just the config YAML.</p>
+</section>
+
+<!-- EXECUTION -->
+<section id="execution">
+  <h2>Execution contract</h2>
+  <div class="lede">The trick that makes Helix work without forking <code>compile.py</code> / <code>evaluate.py</code>: bake the whole repo into the worker image, mount it read-only via overlayfs per job, write only into the tmpfs upperdir.</div>
+
+  <div class="mermaid">
+flowchart TB
+  subgraph IMG["worker image (built from git archive &lt;HEAD-sha&gt;)"]
+    REPO["/repo-snapshot/ (read-only)<br/>HELIX_BAKED_REPO_SHA in env"]:::ro
+  end
+  subgraph JOB["per-job /work/&lt;job-id&gt;/"]
+    UP["upper/ (tmpfs)"]:::rw
+    WD["wd/ (tmpfs)"]:::rw
+    MNT["repo/ (overlayfs mount)"]:::merged
+  end
+  REPO -- lowerdir --> MNT
+  UP -- upperdir --> MNT
+  WD -- workdir --> MNT
+  BUNDLE[bundle.tar.gz<br/>programs/&lt;p&gt;/&lt;v&gt;/… overlay] -->|tar xf into repo/| MNT
+  MNT --> PROC[python3 .claude/skills/ai-utils/compile.py<br/>cwd=repo/backend/ai · start_new_session=True]
+  PROC -->|writes results/&lt;NNNN&gt;/ into upper/| UP
+  UP -->|walk + upload| BLOB[(helix-blob)]:::store
+  classDef ro fill:#0d1117,stroke:#8b949e,color:#e6edf3
+  classDef rw fill:#0d1117,stroke:#d29922,color:#e6edf3
+  classDef merged fill:#0d1117,stroke:#3fb950,color:#e6edf3
+  classDef store fill:#161b22,stroke:#d29922,color:#e6edf3
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>Why overlayfs, not cp -al?</h4>
+      <p><code>cp -al</code> hardlinks; a Python <code>open(path,'w')</code> truncates the inode in place and corrupts the shared snapshot. <code>cp -R</code> is the safe fallback if the container lacks <code>CAP_SYS_ADMIN</code>. Never <code>cp -al</code>.</p>
+    </div>
+    <div class="card">
+      <h4>Why one shared SHA across api+worker+ui?</h4>
+      <p>All Helix images <code>COPY</code> from the same <code>git archive &lt;sha&gt;</code> tarball produced by the build script; the script writes <code>HELIX_BAKED_REPO_SHA</code> into each image's env. The CLI cannot diff against the wrong SHA.</p>
+    </div>
+  </div>
+
+  <h3>Baked-only roots (changes require <code>helix up --rebuild</code>)</h3>
+  <ul>
+    <li><code>.claude/skills/ai-utils/</code> — compile.py, evaluate.py, tracing.py, helix itself</li>
+    <li><code>backend/ai/api/</code>, <code>backend/ai/runtime/</code>, <code>backend/ai/deploy/</code>, <code>backend/ai/scripts/</code></li>
+    <li><code>backend/ai/pyproject.toml</code>, <code>backend/ai/uv.lock</code>, <code>backend/ai/Dockerfile</code></li>
+    <li>Rule of thumb: anything under <code>backend/ai/</code> that is NOT <code>backend/ai/programs/</code>.</li>
+  </ul>
+
+  <h3>Overlayable root (no rebuild needed)</h3>
+  <p><code>backend/ai/programs/</code> in full (cross-version deps like v06/metrics.py loading v05 metrics work), except <code>backend/ai/programs/*/*/results/**</code> which is excluded from every overlay query.</p>
+</section>
+
+<!-- DATA -->
+<section id="data">
+  <h2>Data model (Postgres)</h2>
+
+  <div class="mermaid">
+erDiagram
+  programs ||--o{ program_versions : has
+  program_versions ||--o{ datasets : has
+  datasets ||--o{ splits : has
+  program_versions ||--o{ jobs : "runs against"
+  datasets ||--o{ jobs : "(FK)"
+  splits ||--o{ jobs : "(FK)"
+  jobs ||--o{ artifacts : produces
+  jobs ||--o{ jobs : "eval → parent compile"
+  program_versions ||--|| legacy_compile_run_numbers : "allocator"
+  jobs ||--|| legacy_eval_run_numbers : "(compile job)"
+  worker_heartbeats }o--|| jobs : "owns via worker_id"
+
+  programs {
+    int id PK
+    text name UK
+  }
+  program_versions {
+    int id PK
+    int program_id FK
+    text version
+  }
+  datasets {
+    int id PK
+    int program_version_id FK
+    text version
+  }
+  splits {
+    int id PK
+    int dataset_id FK
+    text version
+  }
+  jobs {
+    uuid id PK
+    text type "compile or eval"
+    text status "queued running succeeded failed cancelled"
+    int program_version_id FK
+    int dataset_id FK
+    int split_id FK
+    uuid parent_job_id FK "eval → compile"
+    text config_blob_key
+    text bundle_blob_key
+    text baked_sha
+    text run_label UK
+    int attempt
+    text worker_id
+    timestamp lease_expires_at
+    int emitted_run_number "immutable; used in blob paths"
+    int export_run_number "mutable; only set by helix export"
+    timestamp created_at
+    timestamp started_at
+    timestamp ended_at
+    int exit_code
+    jsonb summary
+  }
+  artifacts {
+    uuid id PK
+    uuid job_id FK
+    text relative_path "results-dir-relative; e.g. compile/compiled_program/program.pkl"
+    text kind
+    text blob_key
+    bigint size_bytes
+    text sha256_hex
+    text mime
+    int attempt
+    timestamp created_at
+  }
+  worker_heartbeats {
+    text worker_id PK
+    text baked_sha
+    timestamp last_seen
+  }
+  legacy_compile_run_numbers {
+    int program_version_id PK
+    int next_number
+  }
+  legacy_eval_run_numbers {
+    uuid compile_job_id PK
+    int next_number
+  }
+  </div>
+
+  <h3>Why partial unique indexes?</h3>
+  <pre>CREATE UNIQUE INDEX uq_jobs_compile_emitted
+  ON jobs (program_version_id, emitted_run_number)
+  WHERE type = 'compile' AND emitted_run_number IS NOT NULL;
+CREATE UNIQUE INDEX uq_jobs_eval_emitted
+  ON jobs (parent_job_id, emitted_run_number)
+  WHERE type = 'eval' AND emitted_run_number IS NOT NULL;
+-- same shape for export_run_number</pre>
+  <p>Belt-and-braces against any future allocator bug. The allocator is the primary correctness mechanism; the constraints are a backstop.</p>
+</section>
+
+<!-- NUMBERING -->
+<section id="numbering">
+  <h2>Legacy run numbering (the trickiest part)</h2>
+  <div class="lede">Two compile jobs can run concurrently in isolated overlays. <code>compile.py</code> picks <code>max(results)+1</code>. Without coordination they'd both claim <code>0033</code>. Solution: DB-allocated number + seed placeholder dirs so <code>compile.py</code> deterministically picks the allocated number.</div>
+
+  <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant W as helix-worker
+  participant DB as Postgres
+  participant FS as overlay tmpfs
+  participant PY as compile.py
+
+  Note over W,DB: First-ever job for (program_version): allocator row absent
+  W->>DB: INSERT INTO legacy_compile_run_numbers<br/>VALUES ($pvid, max(observed)+2)<br/>ON CONFLICT DO UPDATE SET next_number = next_number + 1<br/>RETURNING next_number - 1
+  DB-->>W: N (the allocated number, = max+1)
+  W->>FS: mkdir results/0001/ … results/000(N-1)/
+  W->>PY: spawn compile.py --config …
+  PY->>FS: max(results)+1 == N → mkdir results/N/
+  PY-->>W: exit 0
+  W->>W: assert actual emitted dir == N (defensive guard)
+  W->>DB: UPDATE jobs SET emitted_run_number=N (fenced)
+  </div>
+
+  <h3>Emitted vs Export</h3>
+  <table>
+    <tr><th></th><th><code>emitted_run_number</code></th><th><code>export_run_number</code></th></tr>
+    <tr><td>Set when</td><td>Job starts (allocated)</td><td><code>helix export</code> runs</td></tr>
+    <tr><td>Mutable?</td><td>No, ever</td><td>Yes, can be reallocated on host collision</td></tr>
+    <tr><td>Used for</td><td>Blob storage paths; cross-job references</td><td>Filesystem path under <code>backend/ai/programs/…/results/</code></td></tr>
+    <tr><td>Why separate?</td><td colspan="2">If a non-Helix manual run later occupies the same NNNN on disk, export re-allocates without touching the blob layout.</td></tr>
+  </table>
+</section>
+
+<!-- CLI -->
+<section id="cli">
+  <h2>CLI surface</h2>
+  <div class="lede">Skills <code>/ai-compile</code> and <code>/ai-eval</code> remain — their SKILL.md now calls <code>helix submit …</code> under the hood. The <code>helix</code> CLI also exposes power-user operations.</div>
+
+  <pre>helix bootstrap                    # interactive secrets prompt → writes .env (gitignored)
+helix up | down | status           # docker compose lifecycle
+
+helix submit compile &lt;config&gt; [&lt;config&gt; ...] \
+       [--auto-eval &lt;eval-config&gt;] [--no-auto-eval] \
+       [--program &lt;name&gt;] [--version &lt;v&gt;]
+helix submit eval    &lt;eval-config&gt; [&lt;eval-config&gt; ...] \
+       --compile-job &lt;uuid&gt; | --compilation &lt;local-results-dir&gt;
+
+helix list   [--program X] [--version V] [--dataset D] [--split S] [--status running]
+helix status &lt;job-id&gt;
+helix logs   &lt;job-id&gt; [-f]
+helix cancel &lt;job-id&gt;
+helix open   [&lt;job-id&gt;]            # http://127.0.0.1:7000/jobs/&lt;id&gt;
+helix traces &lt;job-id&gt;              # opens http://127.0.0.1:7000/api/langfuse/sso?return_to=&lt;deep-link&gt;
+                                   # → auto-logs in via NextAuth → lands on traces filtered by run_label
+
+helix export &lt;job-id&gt; [--into &lt;path&gt;]
+  # bridges to /ai-deploy: materializes legacy results-dir shape
+  # (compile/, gepa_logs/, evals/, program.hash, EVAL_SUMMARY.md, data symlink)
+  # at backend/ai/programs/&lt;p&gt;/&lt;v&gt;/results/&lt;export_run_number&gt;/
+  # Skips helix/* synthetic artifacts.</pre>
+
+  <h3>Compatibility</h3>
+  <table>
+    <tr><th>Skill</th><th>Strategy</th></tr>
+    <tr><td><code>/ai-compile</code></td><td>SKILL.md → <code>helix submit compile</code>. Multi-config + auto-eval-chain preserved.</td></tr>
+    <tr><td><code>/ai-eval</code></td><td>SKILL.md → <code>helix submit eval --compile-job …</code>.</td></tr>
+    <tr><td><code>/ai-deploy</code></td><td><strong>Unchanged in v1.</strong> Bridged via <code>helix export</code>. v2: API-direct deploy.</td></tr>
+  </table>
+</section>
+
+<!-- API -->
+<section id="api">
+  <h2>API — OpenAPI is the source of truth</h2>
+  <div class="lede">Per project rule: edit <code>openapi.yaml</code> first, regenerate types, then write code that uses generated types only. CI fails if generated files drift.</div>
+
+  <div class="card">
+    <h4>Codegen layout</h4>
+    <pre>.claude/skills/ai-utils/helix/
+├── openapi/
+│   ├── openapi.yaml        # single source of truth
+│   └── codegen.sh          # regenerates everything (pre-commit + CI)
+├── api/helix_api/generated/    # Pydantic models (datamodel-code-generator)
+├── ui/lib/api/generated/       # TS types + fetch client (@hey-api/openapi-ts)
+└── cli/helix_cli/generated/    # Python client (openapi-python-client)</pre>
+  </div>
+
+  <h3>Endpoints (every one in the spec)</h3>
+  <table>
+    <tr><th>Method + path</th><th>Purpose</th></tr>
+    <tr><td><code>GET /api/runtime/baked-sha</code></td><td>Returns API SHA + per-worker SHAs; CLI uses this to compute the overlay and refuse heterogeneous fleets.</td></tr>
+    <tr><td><code>POST /api/jobs/compile</code></td><td>Multipart: <code>bundle.tar.gz</code> + metadata JSON. Returns <code>{job_id, run_label, ui_url, langfuse_url}</code>.</td></tr>
+    <tr><td><code>POST /api/jobs/eval</code></td><td>Multipart. Requires <code>parent_job_id</code> in metadata.</td></tr>
+    <tr><td><code>GET /api/jobs</code></td><td>List with filters (program, version, dataset, split, status, limit).</td></tr>
+    <tr><td><code>GET /api/jobs/{id}</code></td><td>Job detail.</td></tr>
+    <tr><td><code>GET /api/jobs/{id}/logs?follow=true</code></td><td>SSE log stream (declared <code>text/event-stream</code> in spec).</td></tr>
+    <tr><td><code>POST /api/jobs/{id}/cancel</code></td><td>Publishes to redis cancel channel.</td></tr>
+    <tr><td><code>GET /api/jobs/{id}/artifacts</code></td><td>List <code>[{id, relative_path, kind, size_bytes, sha256, attempt, …}]</code>. Optional <code>?kind=</code> / <code>?prefix=</code>.</td></tr>
+    <tr><td><code>GET /api/jobs/{id}/artifacts/{artifact_id}</code></td><td>Stream a single artifact by id.</td></tr>
+    <tr><td><code>GET /api/jobs/{id}/artifacts.tar.gz</code></td><td>Bulk download as tar (used by <code>helix export</code>).</td></tr>
+    <tr><td><code>GET /api/jobs/{id}/traces</code></td><td><code>{ url: "/api/langfuse/sso?return_to=/langfuse/project/kincalendar-ai/traces?environment=&lt;run_label&gt;" }</code> — relative; browser hits the SSO trampoline below.</td></tr>
+    <tr><td><code>GET /api/langfuse/sso?return_to=&lt;path&gt;</code></td><td>POSTs seeded creds to langfuse-web's NextAuth credentials callback, captures the session cookie, returns <code>302</code> to <code>return_to</code> with <code>Set-Cookie</code> attached. Silent re-mint on every call.</td></tr>
+  </table>
+</section>
+
+<!-- RISKS -->
+<section id="risks">
+  <h2>Guarantees &amp; acknowledged risks</h2>
+
+  <div class="grid2">
+    <div class="card">
+      <h4><span class="tag good">guaranteed</span> Durability</h4>
+      <p>Postgres is the only durable queue. Redis carries only transient log fan-out + cancel signals. A redis outage cannot lose a job; a missed cancel just runs to completion.</p>
+    </div>
+    <div class="card">
+      <h4><span class="tag good">guaranteed</span> Stale-writer safety</h4>
+      <p>Every post-claim Postgres write is fenced by <code>WHERE worker_id=$me AND attempt=$attempt</code>. A worker whose lease expired silently no-ops; its partial blob writes become unreferenced garbage.</p>
+    </div>
+    <div class="card">
+      <h4><span class="tag good">guaranteed</span> Reproducibility</h4>
+      <p>Every job stores <code>baked_sha</code>. <code>helix up</code> refuses to build a worker image with dirty baked roots; the image is built from <code>git archive &lt;sha&gt;</code>, not the worktree.</p>
+    </div>
+    <div class="card">
+      <h4><span class="tag good">guaranteed</span> Artifact fidelity</h4>
+      <p>Worker explicitly produces <code>program.hash</code> + root config copy (compile) and <code>EVAL_SUMMARY.md</code> (eval). Every uploaded file carries <code>relative_path</code>+<code>sha256</code>; <code>helix export</code> reconstructs the full tree (incl. <code>gepa_logs/**</code>) and skips unchanged files.</p>
+    </div>
+    <div class="card">
+      <h4><span class="tag warn">deferred to v2</span> Tombstones</h4>
+      <p>v1 hard-errors on deletions/renames under overlayable roots. Submit-side hint: commit first, then <code>helix up --rebuild</code>.</p>
+    </div>
+    <div class="card">
+      <h4><span class="tag warn">accepted</span> Pinned langfuse-web image</h4>
+      <p>v1 requires a langfuse-web image built with <code>NEXT_PUBLIC_BASE_PATH=/langfuse</code> so subpath hosting works (static assets, NextAuth redirects). Either an upstream tag known to ship with it, or a ~10-line local layer that rebuilds with the flag.</p>
+    </div>
+    <div class="card">
+      <h4><span class="tag warn">accepted</span> Rebuild on baked-root edits</h4>
+      <p>Iterating on <code>compile.py</code> / <code>evaluate.py</code> / <code>tracing.py</code> requires <code>helix up --rebuild</code>. Iteration on <code>backend/ai/programs/…</code> does not. The CLI hard-errors on dirty baked roots so silent inconsistencies can't happen.</p>
+    </div>
+    <div class="card">
+      <h4><span class="tag info">v1 scope cutout</span> Auth, multi-user, retention</h4>
+      <p>Everything bound to <code>127.0.0.1</code>. No auth. Artifacts kept forever (manual <code>docker volume rm</code> to prune).</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    Spec lives at <code>/Users/sanket/.claude/plans/twinkly-purring-liskov.md</code>. This viewer renders the same plan visually.
+  </div>
+</section>
+
+</main>
+
+<script>
+  mermaid.initialize({ startOnLoad: false, theme: 'dark', themeVariables: {
+    fontFamily: 'ui-monospace, monospace',
+    primaryColor: '#161b22', primaryTextColor: '#e6edf3',
+    primaryBorderColor: '#3fb950', lineColor: '#8b949e',
+    secondaryColor: '#0d1117', tertiaryColor: '#0d1117'
+  }});
+  // Render all diagrams while every section is visible, THEN enable tab hiding.
+  (async () => {
+    await mermaid.run({ querySelector: '.mermaid' });
+    document.body.classList.add('tabs-ready');
+  })();
+  const nav = document.getElementById('nav');
+  nav.addEventListener('click', e => {
+    if (e.target.tagName !== 'BUTTON') return;
+    const tab = e.target.dataset.tab;
+    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    document.querySelectorAll('main section').forEach(s => s.classList.toggle('active', s.id === tab));
+    window.scrollTo({ top: 0 });
+  });
+</script>
+</body>
+</html>

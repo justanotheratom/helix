@@ -1,0 +1,80 @@
+# DSPy Evaluation Configuration Schema
+
+$schema: "http://json-schema.org/draft-07/schema#"
+title: "DSPy Evaluation Configuration Schema"
+description: "Schema for configuring DSPy program evaluation via YAML"
+type: object
+
+required:
+  - metric
+  - data
+
+properties:
+  metric:
+    type: object
+    description: "Evaluation metric configuration"
+    required:
+      - module
+      - function
+    properties:
+      module:
+        type: string
+        description: "Python module path containing the metric function"
+      function:
+        type: string
+        description: "Name of the metric function"
+
+  data:
+    type: object
+    description: "Data configuration for evaluation"
+    required:
+      - source
+      - splits
+    properties:
+      source:
+        type: string
+        description: "Path to source JSONL data file"
+      splits:
+        type: string
+        description: "Path to split manifest JSON file"
+      split_name:
+        type: string
+        enum: ["train", "val", "test", "all"]
+        default: "test"
+        description: "Which split to evaluate on"
+      limit:
+        type: ["integer", "null"]
+        minimum: 1
+        description: "Limit number of examples to evaluate (null = all)"
+      program_inputs:
+        type: array
+        items:
+          type: string
+        description: "Field names that are program inputs"
+      input_key:
+        type: string
+        default: "input"
+        description: "Key in data for input field"
+      output_key:
+        type: string
+        default: "output"
+        description: "Key in data for expected output field"
+
+  env:
+    type: object
+    description: "Environment variables to inject"
+    additionalProperties:
+      type: string
+
+  metadata:
+    type: object
+    description: "Optional metadata about the configuration"
+    additionalProperties: true
+    properties:
+      name:
+        type: string
+        description: "Name/description of this evaluation configuration"
+      description:
+        type: string
+        description: "Description of what this evaluation tests"
+

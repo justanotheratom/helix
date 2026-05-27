@@ -1,0 +1,23 @@
+{
+    auto_https off
+    admin off
+}
+
+:7000 {
+    encode zstd gzip
+
+    # Helix API. handle_path strips /api so FastAPI mounts at root.
+    handle_path /api/* {
+        reverse_proxy helix-api:8000 {
+            flush_interval -1   # required for SSE log streaming
+        }
+    }
+
+    # Helix UI (Next.js SPA) as the default handler.
+    handle {
+        reverse_proxy helix-ui:3000
+    }
+
+    # Note: Langfuse is reached at http://127.0.0.1:3010 directly, not via Caddy.
+    # See helix/deploy/docker-compose.yml for the two-port rationale.
+}

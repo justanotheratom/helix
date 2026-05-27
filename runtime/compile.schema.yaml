@@ -1,0 +1,1031 @@
+# DSPy Program Configuration Schema
+
+# Single schema file using JSON Schema Draft 7 format written in YAML syntax
+# Since YAML is a superset of JSON, JSON Schema can be fully described in YAML
+# Each optimizer has its own separate parameter schema defined within this file using allOf
+
+$schema: "http://json-schema.org/draft-07/schema#"
+title: "DSPy Program Configuration Schema"
+description: "Schema for configuring DSPy programs, data, and optimizers via YAML"
+type: object
+
+# Reusable definitions
+definitions:
+  lm_config:
+    type: object
+    description: "Language model configuration"
+    required:
+      - model
+      - api_key_env
+    properties:
+      model:
+        type: string
+        description: "Model identifier (e.g., 'groq/openai/gpt-oss-20b', 'openai/gpt-4o-mini')"
+      api_base:
+        type: string
+        description: "API base URL (optional - LiteLLM handles routing automatically for most providers)"
+      api_key_env:
+        type: string
+        description: "Environment variable name containing the API key"
+    additionalProperties: true
+    # Any additional fields (timeout, num_retries, cache, temperature,
+    # max_tokens, stream, ...) are forwarded as kwargs to dspy.LM /
+    # litellm. Recommended for reasoning/streaming models:
+    #   timeout: 300       # hard wall-clock cap; without this a stalled
+    #                      # streaming response can hang the whole pipeline
+    #                      # in a kernel poll() with no timeout
+    #   num_retries: 2     # retry transient API failures
+    #   stream: false      # disable streaming entirely (avoids the hang
+    #                      # class above; some reasoning models still
+    #                      # benefit from non-streaming for stability)
+
+properties:
+  lm_configs:
+    type: object
+    description: "Named language model configurations that can be referenced by name"
+    additionalProperties:
+      $ref: "#/definitions/lm_config"
+  
+  program:
+    type: object
+    description: "DSPy program/module configuration"
+    required:
+      - module
+      - class
+    properties:
+      module:
+        type: string
+        description: "Python module path containing the program class"
+      class:
+        type: string
+        description: "Name of the program class"
+      args:
+        type: object
+        description: "Arguments passed to program constructor"
+        properties:
+          lm_config:
+            type: string
+            description: "Reference to a named lm_config in lm_configs"
+          module_config:
+            type: object
+            description: "Module-specific configuration"
+
+  metric:
+    type: object
+    description: "Evaluation metric configuration"
+    required:
+      - module
+      - function
+    properties:
+      module:
+        type: string
+        description: "Python module path containing the metric function"
+      function:
+        type: string
+        description: "Name of the metric function"
+
+  data:
+    type: object
+    description: "Data configuration"
+    required:
+      - source
+      - splits
+    properties:
+      source:
+        type: string
+        description: "Path to source JSONL data file"
+      splits:
+        type: string
+        description: "Path to split manifest JSON file"
+      eval_split_name:
+        type: string
+        enum: ["train", "val", "test", "all"]
+        default: "test"
+        description: "Default split to use for evaluation"
+      program_inputs:
+        type: array
+        items:
+          type: string
+        description: "Field names that are program inputs"
+      input_key:
+        type: string
+        default: "input"
+        description: "Key in data for input field"
+      output_key:
+        type: string
+        default: "output"
+        description: "Key in data for expected output field"
+
+  optimizer:
+    type: ["string", "null"]
+    enum:
+      - BootstrapFewShot
+      - BootstrapFewShotWithRandomSearch
+      - BootstrapFewShotWithOptuna
+      - COPRO
+      - MIPROv2
+      - SIMBA
+      - GEPA
+      - SequentialFeedbackOptimizer
+      - BootstrapFinetune
+      - GRPO
+      - Ensemble
+      - LabeledFewShot
+      - KNNFewShot
+      - AvatarOptimizer
+      - BetterTogether
+      - InferRules
+      - null
+    description: "Name of the optimizer to use, or null for baseline run (no optimization)"
+  
+  optimizer_params:
+    type: object
+    description: "Parameters passed to optimizer __init__"
+  
+  compile_params:
+    type: object
+    description: "Parameters passed to optimizer.compile()"
+  
+  metadata:
+    type: object
+    description: "Optional metadata about the configuration"
+    additionalProperties: true
+    properties:
+      name:
+        type: string
+        description: "Name/description of this configuration"
+      description:
+        type: string
+        description: "Description of what this configuration does"
+      tags:
+        type: array
+        items:
+          type: string
+        description: "Tags for categorizing configurations"
+      version:
+        type: string
+        description: "Version of this configuration"
+
+# Optimizer-specific schemas
+allOf:
+  # Baseline run (no optimizer)
+  - if:
+      properties:
+        optimizer:
+          const: null
+    then:
+      properties:
+        optimizer_params:
+          type: ["object", "null"]
+          description: "Not used for baseline runs"
+        compile_params:
+          type: ["object", "null"]
+          description: "Not used for baseline runs"
+  
+  # BootstrapFewShot
+  - if:
+      properties:
+        optimizer:
+          const: BootstrapFewShot
+    then:
+      properties:
+        optimizer_params:
+          properties:
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            max_bootstrapped_demos:
+              type: integer
+              minimum: 0
+              default: 4
+              description: "Maximum number of bootstrapped demonstrations"
+            max_labeled_demos:
+              type: integer
+              minimum: 0
+              default: 16
+              description: "Maximum number of labeled demonstrations"
+            max_rounds:
+              type: integer
+              minimum: 1
+              default: 1
+              description: "Number of bootstrap rounds"
+            metric_threshold:
+              type: ["number", "null"]
+              description: "Threshold for filtering examples"
+            teacher_settings:
+              type: ["object", "null"]
+              description: "Settings for teacher model"
+              properties:
+                lm_config:
+                  type: string
+                  description: "Reference to a named lm_config in lm_configs"
+            max_errors:
+              type: ["integer", "null"]
+              minimum: 0
+              description: "Maximum errors before stopping"
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            teacher:
+              description: "Teacher program (optional)"
+              type: "null"
+            valset:
+              description: "Validation dataset (optional)"
+              type: "null"
+  # BootstrapFewShotWithRandomSearch
+  - if:
+      properties:
+        optimizer:
+          const: BootstrapFewShotWithRandomSearch
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - metric
+          properties:
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            max_bootstrapped_demos:
+              type: integer
+              minimum: 0
+              default: 4
+            max_labeled_demos:
+              type: integer
+              minimum: 0
+              default: 16
+            max_rounds:
+              type: integer
+              minimum: 1
+              default: 1
+            num_candidate_programs:
+              type: integer
+              minimum: 1
+              default: 16
+            num_threads:
+              type: ["integer", "null"]
+              minimum: 1
+            teacher_settings:
+              type: ["object", "null"]
+            max_errors:
+              type: ["integer", "null"]
+              minimum: 0
+            stop_at_score:
+              type: ["number", "null"]
+            metric_threshold:
+              type: ["number", "null"]
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            valset:
+              description: "Validation dataset (recommended)"
+              type: "null"
+            teacher:
+              description: "Teacher program (optional)"
+              type: "null"
+            restrict:
+              description: "Restriction parameter (set programmatically)"
+              type: "null"
+            labeled_sample:
+              type: boolean
+              default: true
+  # MIPROv2
+  - if:
+      properties:
+        optimizer:
+          const: MIPROv2
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - metric
+          properties:
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            auto:
+              type: ["string", "null"]
+              enum: ["light", "medium", "heavy"]
+              default: "light"
+            num_candidates:
+              type: ["integer", "null"]
+              minimum: 1
+            prompt_model:
+              description: "Model for prompt generation (set programmatically from prompt_model_config)"
+              type: "null"
+            prompt_model_config:
+              type: string
+              description: "Reference to a named lm_config in lm_configs"
+            task_model:
+              description: "Model for task execution (set programmatically from task_model_config)"
+              type: "null"
+            task_model_config:
+              type: string
+              description: "Reference to a named lm_config in lm_configs"
+            teacher_settings:
+              type: ["object", "null"]
+              description: "Teacher settings (can include lm_config)"
+              properties:
+                lm_config:
+                  type: string
+                  description: "Reference to a named lm_config in lm_configs"
+            max_bootstrapped_demos:
+              type: integer
+              minimum: 0
+              default: 4
+            max_labeled_demos:
+              type: integer
+              minimum: 0
+              default: 4
+            num_threads:
+              type: ["integer", "null"]
+              minimum: 1
+            max_errors:
+              type: ["integer", "null"]
+              minimum: 0
+            seed:
+              type: integer
+              default: 9
+            init_temperature:
+              type: number
+              minimum: 0
+              default: 1.0
+            verbose:
+              type: boolean
+              default: false
+            track_stats:
+              type: boolean
+              default: true
+            log_dir:
+              type: ["string", "null"]
+            metric_threshold:
+              type: ["number", "null"]
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            valset:
+              description: "Validation dataset (recommended)"
+              type: "null"
+            teacher:
+              description: "Teacher program (optional)"
+              type: "null"
+            num_trials:
+              type: ["integer", "null"]
+              minimum: 1
+            minibatch:
+              type: boolean
+              default: true
+            minibatch_size:
+              type: integer
+              minimum: 1
+              default: 35
+            minibatch_full_eval_steps:
+              type: integer
+              minimum: 1
+              default: 5
+            program_aware_proposer:
+              type: boolean
+              default: true
+            data_aware_proposer:
+              type: boolean
+              default: true
+            view_data_batch_size:
+              type: integer
+              minimum: 1
+              default: 10
+            tip_aware_proposer:
+              type: boolean
+              default: true
+            fewshot_aware_proposer:
+              type: boolean
+              default: true
+  # COPRO
+  - if:
+      properties:
+        optimizer:
+          const: COPRO
+    then:
+      properties:
+        optimizer_params:
+          properties:
+            prompt_model:
+              description: "Model for prompt generation (set programmatically)"
+              type: "null"
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            breadth:
+              type: integer
+              minimum: 1
+              default: 10
+            depth:
+              type: integer
+              minimum: 1
+              default: 3
+            init_temperature:
+              type: number
+              minimum: 0
+              default: 1.4
+            track_stats:
+              type: boolean
+              default: false
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            eval_kwargs:
+              type: object
+              properties:
+                num_threads:
+                  type: ["integer", "null"]
+                  minimum: 1
+                display_progress:
+                  type: boolean
+                  default: true
+  # SIMBA
+  - if:
+      properties:
+        optimizer:
+          const: SIMBA
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - metric
+          properties:
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            bsize:
+              type: integer
+              minimum: 1
+              default: 32
+            num_candidates:
+              type: integer
+              minimum: 1
+              default: 6
+            max_steps:
+              type: integer
+              minimum: 1
+              default: 8
+            max_demos:
+              type: integer
+              minimum: 0
+              default: 4
+            prompt_model:
+              description: "Model for prompt generation (set programmatically)"
+              type: "null"
+            teacher_settings:
+              type: ["object", "null"]
+            demo_input_field_maxlen:
+              type: integer
+              minimum: 1
+              default: 100000
+            num_threads:
+              type: ["integer", "null"]
+              minimum: 1
+            temperature_for_sampling:
+              type: number
+              minimum: 0
+              default: 0.2
+            temperature_for_candidates:
+              type: number
+              minimum: 0
+              default: 0.2
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            seed:
+              type: integer
+              default: 0
+  # GEPA
+  - if:
+      properties:
+        optimizer:
+          const: GEPA
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - metric
+            - reflection_lm
+          properties:
+            metric:
+              description: "GEPAFeedbackMetric function (set programmatically)"
+              type: "null"
+            auto:
+              type: ["string", "null"]
+              enum: ["light", "medium", "heavy"]
+            max_full_evals:
+              type: ["integer", "null"]
+              minimum: 1
+            max_metric_calls:
+              type: ["integer", "null"]
+              minimum: 1
+            reflection_minibatch_size:
+              type: integer
+              minimum: 1
+              default: 3
+            candidate_selection_strategy:
+              type: string
+              enum: ["pareto", "current_best"]
+              default: "pareto"
+            reflection_lm:
+              description: "Reflection LM (set programmatically, use strong model)"
+              type: "null"
+            skip_perfect_score:
+              type: boolean
+              default: true
+            add_format_failure_as_feedback:
+              type: boolean
+              default: false
+            instruction_proposer:
+              description: "Custom instruction proposer (set programmatically)"
+              type: "null"
+            component_selector:
+              type: string
+              default: "round_robin"
+            component_selector_config:
+              description: |
+                Shorthand for building a custom component_selector callable.
+                Supported forms:
+                  { fixed: [<predictor_name>, ...] }
+                    Always optimize only the listed predictors (e.g. freeze
+                    extract.predict in a ReAct module by passing fixed: [react]).
+              type: object
+              additionalProperties: true
+            use_merge:
+              type: boolean
+              default: true
+            max_merge_invocations:
+              type: integer
+              minimum: 1
+              default: 5
+            num_threads:
+              type: ["integer", "null"]
+              minimum: 1
+            failure_score:
+              type: number
+              default: 0.0
+            perfect_score:
+              type: number
+              default: 1.0
+            log_dir:
+              type: ["string", "null"]
+            track_stats:
+              type: boolean
+              default: false
+            use_wandb:
+              type: boolean
+              default: false
+            wandb_api_key:
+              type: ["string", "null"]
+            wandb_init_kwargs:
+              type: ["object", "null"]
+            track_best_outputs:
+              type: boolean
+              default: false
+            warn_on_score_mismatch:
+              type: boolean
+              default: true
+            use_mlflow:
+              type: boolean
+              default: false
+            seed:
+              type: integer
+              default: 0
+            gepa_kwargs:
+              type: ["object", "null"]
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            valset:
+              description: "Validation dataset (recommended)"
+              type: "null"
+            teacher:
+              description: "Teacher program (optional)"
+              type: "null"
+  # SequentialFeedbackOptimizer
+  - if:
+      properties:
+        optimizer:
+          const: SequentialFeedbackOptimizer
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - metric
+            - reflection_lm
+            - reflection_lm_config
+          properties:
+            metric:
+              description: "GEPAFeedbackMetric function (set programmatically)"
+              type: "null"
+            reflection_lm:
+              description: "Reflection LM (set programmatically from reflection_lm_config)"
+              type: "null"
+            reflection_lm_config:
+              type: string
+              description: "Reference to a named lm_config in lm_configs"
+            max_retries:
+              type: integer
+              default: 3
+              minimum: 1
+              description: "Maximum number of retry attempts per example before moving to next"
+            perfect_score:
+              type: number
+              default: 1.0
+              description: "Score threshold to stop retrying (achieved = move to next example)"
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+  # BootstrapFinetune
+  - if:
+      properties:
+        optimizer:
+          const: BootstrapFinetune
+    then:
+      properties:
+        optimizer_params:
+          properties:
+            metric:
+              description: "Metric for filtering training data (set programmatically)"
+              type: "null"
+            multitask:
+              type: boolean
+              default: true
+            train_kwargs:
+              description: "Fine-tuning kwargs (set programmatically)"
+              type: "null"
+            adapter:
+              description: "Adapter for formatting data (set programmatically)"
+              type: "null"
+            exclude_demos:
+              type: boolean
+              default: false
+            num_threads:
+              type: ["integer", "null"]
+              minimum: 1
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            teacher:
+              description: "Teacher program or list (set programmatically)"
+              type: "null"
+  # GRPO
+  - if:
+      properties:
+        optimizer:
+          const: GRPO
+    then:
+      properties:
+        optimizer_params:
+          properties:
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            multitask:
+              type: boolean
+              default: true
+            train_kwargs:
+              description: "Training kwargs per LM (set programmatically)"
+              type: "null"
+            adapter:
+              description: "Adapter for data formatting (set programmatically)"
+              type: "null"
+            exclude_demos:
+              type: boolean
+              default: false
+            num_threads:
+              type: integer
+              default: 6
+            num_train_steps:
+              type: integer
+              minimum: 1
+              default: 100
+            seed:
+              type: integer
+              default: 0
+            num_dspy_examples_per_grpo_step:
+              type: integer
+              minimum: 1
+              default: 1
+            num_rollouts_per_grpo_step:
+              type: integer
+              minimum: 1
+              default: 1
+            use_train_as_val:
+              type: boolean
+              default: false
+            num_steps_for_val:
+              type: integer
+              minimum: 1
+              default: 5
+            report_train_scores:
+              type: boolean
+              default: false
+            failure_score:
+              type: number
+              default: 0
+            format_failure_score:
+              type: number
+              default: -1
+            variably_invoked_predictor_grouping_mode:
+              type: string
+              enum: ["truncate", "fill", "ragged"]
+              default: "truncate"
+            variably_invoked_predictor_fill_strategy:
+              type: ["string", "null"]
+              enum: ["randint", "max"]
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            valset:
+              description: "Validation dataset (optional)"
+              type: "null"
+            teacher:
+              description: "Teacher program or list (set programmatically)"
+              type: "null"
+  # Ensemble
+  - if:
+      properties:
+        optimizer:
+          const: Ensemble
+    then:
+      properties:
+        optimizer_params:
+          properties:
+            reduce_fn:
+              description: "Reduction function (set programmatically, e.g., dspy.majority)"
+              type: "null"
+            size:
+              type: ["integer", "null"]
+              minimum: 1
+            deterministic:
+              type: boolean
+              default: false
+        compile_params:
+          required:
+            - programs
+          properties:
+            programs:
+              description: "List of programs to ensemble (set programmatically)"
+              type: "null"
+  # LabeledFewShot
+  - if:
+      properties:
+        optimizer:
+          const: LabeledFewShot
+    then:
+      properties:
+        optimizer_params:
+          properties:
+            k:
+              type: integer
+              minimum: 1
+              default: 16
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            sample:
+              type: boolean
+              default: true
+  # KNNFewShot
+  - if:
+      properties:
+        optimizer:
+          const: KNNFewShot
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - k
+            - trainset
+            - vectorizer
+          properties:
+            k:
+              type: integer
+              minimum: 1
+            trainset:
+              description: "Training dataset (set programmatically, goes in optimizer_params!)"
+              type: "null"
+            vectorizer:
+              description: "Embedder for vectorization (set programmatically)"
+              type: "null"
+        compile_params:
+          properties:
+            teacher:
+              description: "Teacher program (optional)"
+              type: "null"
+  # AvatarOptimizer
+  - if:
+      properties:
+        optimizer:
+          const: AvatarOptimizer
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - metric
+          properties:
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            max_iters:
+              type: integer
+              minimum: 1
+              default: 10
+            lower_bound:
+              type: number
+              default: 0
+            upper_bound:
+              type: number
+              default: 1
+            max_positive_inputs:
+              type: ["integer", "null"]
+              minimum: 1
+              default: 10
+            max_negative_inputs:
+              type: ["integer", "null"]
+              minimum: 1
+              default: 10
+            optimize_for:
+              type: string
+              enum: ["max", "min"]
+              default: "max"
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+  # BetterTogether
+  - if:
+      properties:
+        optimizer:
+          const: BetterTogether
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - metric
+          properties:
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            prompt_optimizer:
+              description: "Prompt optimizer instance (set programmatically)"
+              type: "null"
+            weight_optimizer:
+              description: "Weight optimizer instance (set programmatically)"
+              type: "null"
+            seed:
+              type: ["integer", "null"]
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            strategy:
+              type: string
+              default: "p -> w -> p"
+            valset_ratio:
+              type: number
+              minimum: 0
+              maximum: 1
+              default: 0.1
+  # InferRules
+  - if:
+      properties:
+        optimizer:
+          const: InferRules
+    then:
+      properties:
+        optimizer_params:
+          properties:
+            num_candidates:
+              type: integer
+              minimum: 1
+              default: 10
+            num_rules:
+              type: integer
+              minimum: 1
+              default: 10
+            num_threads:
+              type: ["integer", "null"]
+              minimum: 1
+            teacher_settings:
+              type: ["object", "null"]
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            max_errors:
+              type: ["integer", "null"]
+              minimum: 0
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            valset:
+              description: "Validation dataset (optional)"
+              type: "null"
+            teacher:
+              description: "Teacher program (optional)"
+              type: "null"
+  # BootstrapFewShotWithOptuna
+  - if:
+      properties:
+        optimizer:
+          const: BootstrapFewShotWithOptuna
+    then:
+      properties:
+        optimizer_params:
+          required:
+            - metric
+          properties:
+            metric:
+              description: "Evaluation metric function (set programmatically)"
+              type: "null"
+            teacher_settings:
+              type: ["object", "null"]
+            max_bootstrapped_demos:
+              type: integer
+              minimum: 0
+              default: 4
+            max_labeled_demos:
+              type: integer
+              minimum: 0
+              default: 16
+            max_rounds:
+              type: integer
+              minimum: 1
+              default: 1
+            num_candidate_programs:
+              type: integer
+              minimum: 1
+              default: 16
+            num_threads:
+              type: ["integer", "null"]
+              minimum: 1
+        compile_params:
+          required:
+            - trainset
+          properties:
+            trainset:
+              description: "Training dataset (set programmatically)"
+              type: "null"
+            valset:
+              description: "Validation dataset (optional)"
+              type: "null"
+            teacher:
+              description: "Teacher program (optional)"
+              type: "null"
+            max_demos:
+              type: integer
+              minimum: 0
+

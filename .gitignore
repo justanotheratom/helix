@@ -1,0 +1,16 @@
+# Secrets — never commit. Use deploy/.env.example as the template.
+deploy/.env
+
+# Image build context (staged from the working tree by deploy/build.sh).
+.helix-build/
+
+# Python
+__pycache__/
+*.pyc
+
+# UI
+ui/node_modules/
+ui/.next/
+
+# macOS
+.DS_Store

@@ -1,0 +1,642 @@
+openapi: 3.1.0
+info:
+  title: Helix
+  version: 0.1.0
+  description: |
+    Local DSPy compile/eval job runner. Single-port (127.0.0.1:7000),
+    Postgres-durable queue, blob-stored artifacts, Langfuse traces via
+    same-origin auto-SSO trampoline.
+
+    This spec is the source of truth. Server (FastAPI), UI (Next.js),
+    and CLI (Python) all consume generated types from it; no hand-
+    written models or request bodies.
+
+servers:
+  - url: http://127.0.0.1:7000
+    description: Local Helix instance (behind Caddy)
+
+tags:
+  - name: jobs
+  - name: artifacts
+  - name: logs
+  - name: traces
+  - name: runtime
+  - name: snapshots
+  - name: gc
+
+paths:
+  /api/jobs/compile:
+    post:
+      tags: [jobs]
+      operationId: submitCompile
+      summary: Submit a compile job
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CompileSubmission'
+            encoding:
+              metadata:
+                contentType: application/json
+              bundle:
+                contentType: application/gzip
+      responses:
+        '201':
+          description: Job(s) created
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/JobSubmissionResult' }
+        '400': { $ref: '#/components/responses/Error' }
+        '409':
+          description: Worker fleet has divergent baked_sha or stack not ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/jobs/eval:
+    post:
+      tags: [jobs]
+      operationId: submitEval
+      summary: Submit an eval job against a previous compile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EvalSubmission'
+            encoding:
+              metadata: { contentType: application/json }
+              bundle:   { contentType: application/gzip }
+      responses:
+        '201':
+          description: Job(s) created
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/JobSubmissionResult' }
+        '400': { $ref: '#/components/responses/Error' }
+        '404':
+          description: parent compile job not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/jobs/import-compile:
+    post:
+      tags: [jobs]
+      operationId: importCompile
+      summary: Import a legacy local results directory as an ad-hoc compile job
+      description: |
+        Accepts a tarball of a results-dir tree (as produced by the old
+        launcher). Creates a `succeeded` compile job row with
+        baked_sha=null, emitted_run_number parsed from the directory
+        name, and uploads every file (except evals/** and helix/**)
+        as an artifact. Idempotent on (program_version, emitted_run_number).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ImportCompileSubmission'
+            encoding:
+              metadata: { contentType: application/json }
+              bundle:   { contentType: application/gzip }
+      responses:
+        '200':
+          description: Existing job returned (idempotent hit)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobSubmissionResult' }
+        '201':
+          description: New imported job created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobSubmissionResult' }
+        '400': { $ref: '#/components/responses/Error' }
+
+  /api/jobs:
+    get:
+      tags: [jobs]
+      operationId: listJobs
+      summary: List jobs with filters
+      parameters:
+        - { name: program, in: query, schema: { type: string } }
+        - { name: version, in: query, schema: { type: string } }
+        - { name: dataset, in: query, schema: { type: string } }
+        - { name: split,   in: query, schema: { type: string } }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/JobStatus' }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/JobType' }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Job' }
+
+  /api/jobs/{job_id}:
+    get:
+      tags: [jobs]
+      operationId: getJob
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /api/jobs/{job_id}/cancel:
+    post:
+      tags: [jobs]
+      operationId: cancelJob
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '202':
+          description: Cancel signal published; job will transition to cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409':
+          description: Job is not in a cancellable state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/jobs/{job_id}/logs:
+    get:
+      tags: [logs]
+      operationId: streamLogs
+      summary: SSE stream of log lines (and historical replay on connect)
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - { name: follow, in: query, schema: { type: boolean, default: true } }
+      responses:
+        '200':
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/LogEvent' }
+
+  /api/jobs/{job_id}/artifacts:
+    get:
+      tags: [artifacts]
+      operationId: listArtifacts
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - { name: kind,   in: query, schema: { type: string } }
+        - { name: prefix, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Artifact' }
+
+  /api/jobs/{job_id}/artifacts/{artifact_id}:
+    get:
+      tags: [artifacts]
+      operationId: getArtifact
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - { name: artifact_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Raw artifact stream
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /api/jobs/{job_id}/artifacts.tar.gz:
+    get:
+      tags: [artifacts]
+      operationId: downloadArtifactsTar
+      summary: Bulk tar.gz of all (or prefix-filtered) artifacts at their relative_path
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - { name: prefix, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: tar.gz stream
+          content:
+            application/gzip:
+              schema: { type: string, format: binary }
+
+  /api/jobs/{job_id}/traces:
+    get:
+      tags: [traces]
+      operationId: getTracesUrl
+      summary: Absolute Langfuse traces URL filtered by this job's run_label
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TracesUrl' }
+
+  /api/runtime/baked-sha:
+    get:
+      tags: [runtime]
+      operationId: getBakedSha
+      summary: "Legacy fleet view (worker heartbeats); superseded by snapshots"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BakedShaInfo' }
+
+  /api/snapshots/resolve:
+    get:
+      tags: [snapshots]
+      operationId: resolveSnapshot
+      summary: Return an existing snapshot manifest for (repo_id, digest), else 404
+      parameters:
+        - { name: repo_id, in: query, required: true, schema: { type: string } }
+        - { name: digest,  in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SnapshotRef' }
+        '404': { $ref: '#/components/responses/Error' }
+
+  /api/snapshots/oob:
+    post:
+      tags: [snapshots]
+      operationId: publishOob
+      summary: Store an out-of-band data blob digest-primary (idempotent)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [digest]
+              properties:
+                digest:  { type: string }
+                tarball: { type: string, format: binary }
+            encoding:
+              tarball: { contentType: application/gzip }
+      responses:
+        '201':
+          description: OOB blob stored (or existing returned)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OobRef' }
+        '400': { $ref: '#/components/responses/Error' }
+
+  /api/snapshots:
+    post:
+      tags: [snapshots]
+      operationId: publishSnapshot
+      summary: Publish (or idempotently return) a content-addressed snapshot
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SnapshotPublish'
+            encoding:
+              metadata: { contentType: application/json }
+              tarball:  { contentType: application/gzip }
+      responses:
+        '201':
+          description: Snapshot created (or existing returned)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SnapshotRef' }
+        '400': { $ref: '#/components/responses/Error' }
+
+  /api/gc:
+    post:
+      tags: [gc]
+      operationId: garbageCollect
+      summary: Reclaim storage — unreferenced snapshots/blobs + orphan bundles
+      parameters:
+        - { name: grace_hours, in: query, schema: { type: integer, minimum: 0, default: 24 } }
+        - { name: dry_run, in: query, schema: { type: boolean, default: true } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GcReport' }
+
+components:
+  parameters:
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:    { type: string, example: "validation_error" }
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+
+    JobType:
+      type: string
+      enum: [compile, eval]
+
+    JobStatus:
+      type: string
+      enum: [queued, running, succeeded, failed, cancelled, blocked]
+
+    BakedShaInfo:
+      type: object
+      required: [baked_sha, workers]
+      properties:
+        baked_sha: { type: string, description: "SHA the API container booted with." }
+        workers:
+          type: array
+          items: { $ref: '#/components/schemas/WorkerHeartbeat' }
+
+    WorkerHeartbeat:
+      type: object
+      required: [worker_id, baked_sha, last_seen]
+      properties:
+        worker_id: { type: string }
+        baked_sha: { type: string }
+        last_seen: { type: string, format: date-time }
+
+    SnapshotRef:
+      type: object
+      required: [snapshot_id, digest, existed]
+      properties:
+        snapshot_id: { type: string, format: uuid }
+        digest:      { type: string }
+        existed:     { type: boolean, description: "true if this (repo_id,digest) already had a manifest" }
+
+    OobRef:
+      type: object
+      required: [digest, existed]
+      properties:
+        digest:  { type: string }
+        existed: { type: boolean }
+
+    GcReport:
+      type: object
+      required: [dry_run, grace_hours, deleted_manifests, deleted_snapshot_blobs, deleted_orphan_bundles]
+      properties:
+        dry_run:                { type: boolean }
+        grace_hours:            { type: integer }
+        deleted_manifests:      { type: integer }
+        deleted_snapshot_blobs: { type: integer }
+        deleted_orphan_bundles: { type: integer }
+        snapshot_blob_keys:     { type: array, items: { type: string } }
+        bundle_keys:            { type: array, items: { type: string } }
+
+    SnapshotMeta:
+      type: object
+      required: [repo_id, digest, helix_runtime_version, config_blob]
+      properties:
+        repo_id:                { type: string }
+        digest:                 { type: string, description: "sha256 of the uncompressed canonical tar" }
+        git_sha:                { type: string, nullable: true }
+        helix_runtime_version:  { type: string }
+        lockfile_digest:        { type: string, nullable: true }
+        base_fingerprint:       { type: string, nullable: true }
+        config_blob:            { type: string, description: "the resolved .helix.toml (authoritative for the job)" }
+        seed_state:
+          type: object
+          additionalProperties: { type: integer }
+          description: "max legacy run number per <program>/<version>"
+        oob_blobs:
+          type: object
+          additionalProperties: { type: string }
+          description: "{out_of_band root: blob digest} mounted as extra lowerdirs"
+
+    SnapshotPublish:
+      type: object
+      required: [metadata]
+      properties:
+        metadata: { $ref: '#/components/schemas/SnapshotMeta' }
+        tarball:
+          type: string
+          format: binary
+          description: "gzip'd snapshot tar; omittable when the digest object already exists"
+
+    Job:
+      type: object
+      required:
+        - id
+        - type
+        - status
+        - run_label
+        - attempt
+        - created_at
+      properties:
+        id:                  { type: string, format: uuid }
+        type:                { $ref: '#/components/schemas/JobType' }
+        status:              { $ref: '#/components/schemas/JobStatus' }
+        repo_id:             { type: string,  nullable: true, description: "trusted-local multi-repo key" }
+        snapshot_id:         { type: string,  format: uuid, nullable: true, description: "content-addressed snapshot the job runs against" }
+        blocked_reason:      { type: string,  nullable: true, description: "why a 'blocked' job could not run (e.g. snapshot unavailable)" }
+        program:             { type: string,  nullable: true }
+        version:             { type: string,  nullable: true }
+        dataset:             { type: string,  nullable: true }
+        split:               { type: string,  nullable: true }
+        parent_job_id:       { type: string,  format: uuid, nullable: true }
+        config_path:         { type: string,  nullable: true, description: "repo-relative path of the submitted config" }
+        baked_sha:           { type: string,  nullable: true, description: "legacy; superseded by snapshot_id" }
+        run_label:           { type: string }
+        attempt:             { type: integer }
+        worker_id:           { type: string,  nullable: true }
+        lease_expires_at:    { type: string,  format: date-time, nullable: true }
+        emitted_run_number:  { type: integer, nullable: true }
+        export_run_number:   { type: integer, nullable: true }
+        created_at:          { type: string,  format: date-time }
+        started_at:          { type: string,  format: date-time, nullable: true }
+        ended_at:            { type: string,  format: date-time, nullable: true }
+        exit_code:           { type: integer, nullable: true }
+        summary:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: "Final metrics parsed from the worker's status line (acc, cost, tokens, latency)."
+        ui_url:              { type: string, description: "Absolute URL to this job in the UI" }
+        traces_url:          { type: string, description: "Absolute URL to the SSO trampoline that lands on this job's traces" }
+
+    JobSubmissionResult:
+      type: object
+      required: [job_id, run_label, ui_url, traces_url]
+      properties:
+        job_id:     { type: string, format: uuid }
+        run_label:  { type: string }
+        ui_url:     { type: string }
+        traces_url: { type: string }
+
+    CompileSubmissionMetadata:
+      type: object
+      required: [repo_id, configs]
+      properties:
+        repo_id:                { type: string, description: "trusted-local multi-repo key" }
+        snapshot_id:            { type: string, format: uuid, nullable: true, description: "published snapshot the job runs against" }
+        snapshot_digest:        { type: string, nullable: true }
+        helix_runtime_version:  { type: string, nullable: true, description: "consumer's required helix-runtime version spec" }
+        baked_sha:              { type: string, nullable: true, description: "legacy; superseded by snapshot_id" }
+        program:                { type: string, nullable: true, description: "override; otherwise inferred from config path" }
+        version:                { type: string, nullable: true }
+        configs:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [config_path, dataset, split]
+            properties:
+              config_path: { type: string, description: "repo-relative path under <overlay-root>/<p>/<v>/" }
+              dataset:     { type: string }
+              split:       { type: string }
+              auto_eval_config_path:
+                type: string
+                nullable: true
+                description: "If set, auto-chain an eval against this compile on success."
+        overlay_files:
+          type: array
+          items: { type: string, description: "repo-relative paths in the uploaded bundle" }
+
+    CompileSubmission:
+      type: object
+      required: [metadata, bundle]
+      properties:
+        metadata: { $ref: '#/components/schemas/CompileSubmissionMetadata' }
+        bundle:
+          type: string
+          format: binary
+          description: "tar.gz overlay; may be empty if config is identical to baked snapshot"
+
+    EvalSubmissionMetadata:
+      type: object
+      required: [repo_id, configs]
+      properties:
+        repo_id:                { type: string, description: "trusted-local multi-repo key" }
+        snapshot_id:            { type: string, format: uuid, nullable: true }
+        snapshot_digest:        { type: string, nullable: true }
+        helix_runtime_version:  { type: string, nullable: true }
+        baked_sha:              { type: string, nullable: true, description: "legacy; superseded by snapshot_id" }
+        configs:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [config_path, compile_job_id]
+            properties:
+              config_path:     { type: string }
+              compile_job_id:  { type: string, format: uuid }
+              dataset:         { type: string, nullable: true }
+              split:           { type: string, nullable: true }
+        overlay_files:
+          type: array
+          items: { type: string }
+        inherit_bundle_from_compile_job_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            When set, the new eval job(s) reuse bundle_blob_key from the
+            named compile. Used by the worker's auto-eval-chain hook so
+            the eval has the same overlay as its parent compile.
+
+    EvalSubmission:
+      type: object
+      required: [metadata, bundle]
+      properties:
+        metadata: { $ref: '#/components/schemas/EvalSubmissionMetadata' }
+        bundle:
+          type: string
+          format: binary
+
+    ImportCompileMetadata:
+      type: object
+      required: [repo_id, program, version, dataset, split, emitted_run_number, results_dir_basename]
+      properties:
+        repo_id:               { type: string, description: "trusted-local multi-repo key" }
+        program:               { type: string }
+        version:               { type: string }
+        dataset:               { type: string }
+        split:                 { type: string }
+        emitted_run_number:    { type: integer }
+        results_dir_basename:  { type: string }
+        compile_config_path:   { type: string, nullable: true }
+
+    ImportCompileSubmission:
+      type: object
+      required: [metadata, bundle]
+      properties:
+        metadata: { $ref: '#/components/schemas/ImportCompileMetadata' }
+        bundle:
+          type: string
+          format: binary
+          description: "tar.gz of the entire local results-dir (excluding evals/** and helix/**)"
+
+    Artifact:
+      type: object
+      required: [id, job_id, relative_path, kind, size_bytes, sha256, attempt, created_at]
+      properties:
+        id:             { type: string, format: uuid }
+        job_id:         { type: string, format: uuid }
+        relative_path:  { type: string }
+        kind:           { type: string }
+        size_bytes:     { type: integer, format: int64 }
+        sha256:         { type: string, minLength: 64, maxLength: 64 }
+        mime:           { type: string, nullable: true }
+        attempt:        { type: integer }
+        created_at:     { type: string, format: date-time }
+
+    LogEvent:
+      type: object
+      required: [seq, ts, stream, line]
+      properties:
+        seq:    { type: integer, description: "Monotonic per-job sequence" }
+        ts:     { type: string, format: date-time }
+        stream: { type: string, enum: [stdout, stderr] }
+        line:   { type: string }
+
+    TracesUrl:
+      type: object
+      required: [url, run_label]
+      properties:
+        url:
+          type: string
+          description: |
+            Absolute URL into the Langfuse instance, filtered by
+            `environment=<run_label>`. In v1 Langfuse runs on its own
+            loopback origin (`http://127.0.0.1:3010`); user logs in once
+            with the seeded `LANGFUSE_INIT_USER_*` credentials and the
+            browser keeps the 30-day NextAuth session.
+        run_label:  { type: string }

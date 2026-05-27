@@ -1,0 +1,14 @@
+[project]
+name = "helix-common"
+version = "0.1.0"
+description = "Helix shared config loader (HelixConfig). Dependency-free (stdlib only)."
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Single flat top-level module: `import helix_config`.
+include = ["helix_config.py"]
