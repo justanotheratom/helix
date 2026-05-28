@@ -137,3 +137,23 @@ uv run --project ~/GitHub/helix helix up
   shipped as separate content-addressed blobs and mounted as extra overlay
   lowerdirs.
 - **GC**: `helix gc` reclaims unreferenced snapshot blobs and orphan bundles.
+
+## License
+
+Helix is source-available under the
+[PolyForm Shield License 1.0.0](https://polyformproject.org/licenses/shield/1.0.0)
+(see [LICENSE](./LICENSE)). Plain-English summary, **not legal advice**:
+
+- ✅ **You can self-host Helix for your own purposes** — internal or commercial
+  — including running compiles/evals for your own products and services.
+- ✅ **You can modify it**, fork it, and use those changes internally.
+- ❌ **You cannot use it to build or operate a product that competes with
+  Helix itself** (e.g. a hosted "DSPy job runner as a service" derived from
+  this code).
+
+That's the whole rule. If your use is "we want a local DSPy compile/eval
+stack for our app," you're fine. If your use is "we want to sell a Helix
+look-alike," you're not. The full license text in `LICENSE` is authoritative.
+
+This is **source-available**, not OSI open-source — some orgs have policies
+that distinguish; check before adopting.

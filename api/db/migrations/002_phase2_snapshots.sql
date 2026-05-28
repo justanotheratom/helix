@@ -12,8 +12,10 @@
 -- ---------------------------------------------------------------------------
 
 ALTER TABLE programs ADD COLUMN IF NOT EXISTS repo_id TEXT;
--- Backfill existing rows (PR #81 data) with kincalendar's repo_id.
-UPDATE programs SET repo_id = 'kincalendar' WHERE repo_id IS NULL;
+-- Backfill any pre-Phase-2 rows that lack a repo_id. Fresh installs have no
+-- such rows; existing deployments get a 'legacy' placeholder which the
+-- operator can update before introducing a second repo_id.
+UPDATE programs SET repo_id = 'legacy' WHERE repo_id IS NULL;
 ALTER TABLE programs ALTER COLUMN repo_id SET NOT NULL;
 
 -- Replace the global UNIQUE(name) with UNIQUE(repo_id, name) so two repos
@@ -64,7 +66,7 @@ SET repo_id = p.repo_id
 FROM program_versions pv
 JOIN programs p ON p.id = pv.program_id
 WHERE j.program_version_id = pv.id AND j.repo_id IS NULL;
-UPDATE jobs SET repo_id = 'kincalendar' WHERE repo_id IS NULL;
+UPDATE jobs SET repo_id = 'legacy' WHERE repo_id IS NULL;
 ALTER TABLE jobs ALTER COLUMN repo_id SET NOT NULL;
 
 -- Add 'blocked' to the status check.

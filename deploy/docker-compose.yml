@@ -1,5 +1,6 @@
 # Helix unified stack — one project, one host port (127.0.0.1:7000).
-# Bring up with: docker compose -p kincalendar-helix -f helix/deploy/docker-compose.yml up -d
+# Bring up with: docker compose -p <repo_id>-helix -f deploy/docker-compose.yml up -d
+# Or, from a consumer worktree containing .helix.toml: `helix up`
 # `helix up` wraps that, plus the snapshot-build dance for baked images.
 
 # project name comes from `helix up` (-p <repo_id>-helix); do not hardcode.
