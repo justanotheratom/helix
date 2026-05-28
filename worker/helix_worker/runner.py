@@ -298,7 +298,9 @@ def _run_compile(job: dict[str, Any], work_root: str, ctx: dict[str, Any]) -> No
         job_id=job_id,
         attempt=attempt,
         results_dir=results_dir,
-        include_prefixes=("compile/", "gepa_logs/"),
+        # merged/ is uploaded when compile.config declares a post_compile block
+        # (compile.py runs the transplant inline after a successful compile).
+        include_prefixes=("compile/", "gepa_logs/", "merged/"),
         include_root_files=(
             "program.hash",
             os.path.basename(config_path),

@@ -26,7 +26,7 @@ from optimizer import optimize_program
 from config_utils import inject_config_to_env
 from tracking import LatencyTracker
 from image_utils import encode_image_to_base64, get_image_url
-from program_loader import SelfContainedProgram
+from program_loader import SelfContainedProgram, load_compiled_program
 from module_loader import load_object
 from data_loader import load_from_manifest
 from tracing import setup_langfuse_tracing
@@ -138,6 +138,76 @@ def resolve_lm_config_references(config: Dict[str, Any], path: str = "") -> None
     
     if 'optimizer_params' in config:
         config['optimizer_params'] = resolve_value(config['optimizer_params'], 'optimizer_params')
+
+
+def _run_post_compile(
+    *,
+    compiled_program: Any,
+    run_dir: Path,
+    deploy_program: str,
+    deploy_class: str,
+    config_dict: Dict[str, Any],
+) -> None:
+    """Transplant the trained wrapper's state into a deploy-shaped class.
+
+    DSPy pattern: training compiled a single-LM-call wrapper that exposes
+    inner predictors; the API serves a different class with matching predictor
+    topology. After a successful compile, dump_state from the trained wrapper,
+    instantiate the deploy class with the same state via load_state, and
+    re-pickle as a SelfContainedProgram. Round-trip-loads to confirm.
+
+    Writes:
+      <run_dir>/merged/compiled_program/program.pkl
+      <run_dir>/merged/compiled_program/metadata.json
+      <run_dir>/merged/program.hash
+
+    The deploy class must subclass dspy.Module, share predictor topology with
+    the trained wrapper (so dump_state/load_state transplants cleanly), and
+    accept the same config_dict (or a superset that ignores extras).
+    """
+    import hashlib
+
+    deploy_src = (_base / deploy_program).resolve()
+    if not deploy_src.is_file():
+        raise FileNotFoundError(f"post_compile.deploy_program not found: {deploy_src}")
+    source = deploy_src.read_text()
+    if f"class {deploy_class}" not in source:
+        raise ValueError(
+            f"deploy program {deploy_src} does not define `class {deploy_class}`"
+        )
+
+    state = compiled_program.dump_state(json_mode=False)
+    merged_wrapper = SelfContainedProgram(
+        source_code=source,
+        class_name=deploy_class,
+        config_dict=config_dict,
+        state=state,
+    )
+
+    merged_dir = run_dir / "merged"
+    out_dir = merged_dir / "compiled_program"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pkl_path = out_dir / "program.pkl"
+    with open(pkl_path, "wb") as f:
+        cloudpickle.dump(merged_wrapper, f)
+
+    (out_dir / "metadata.json").write_text(json.dumps({
+        "source": "compile.py post_compile",
+        "deploy_program": deploy_program,
+        "class_name": deploy_class,
+    }, indent=2))
+
+    digest = hashlib.sha256(pkl_path.read_bytes()).hexdigest()
+    (merged_dir / "program.hash").write_text(digest)
+
+    # Round-trip verify: the merged artifact must load back as the deploy class.
+    loaded = load_compiled_program(merged_dir)
+    if loaded.__class__.__name__ != deploy_class:
+        raise AssertionError(
+            f"post_compile: expected {deploy_class}, got {loaded.__class__.__name__}"
+        )
+    print(f"Post-compile transplant: wrote {pkl_path}")
+    print(f"Post-compile transplant: merged program.hash {digest[:12]}…")
 
 
 def main():
@@ -495,7 +565,27 @@ def main():
         print(f"Error: Failed to save program: {e}")
         import traceback
         traceback.print_exc()
-    
+
+    # Optional post-compile state transplant. Built-in: when the consumer's
+    # compile.config declares a `post_compile:` block (deploy_program +
+    # deploy_class), dump the trained wrapper's state into a deploy-shaped
+    # class and write <run_dir>/merged/. helix export carries those merged/
+    # artifacts back to disk alongside compile/ via the worker's upload sweep.
+    pc = config.get('post_compile') or {}
+    if pc.get('deploy_program') and pc.get('deploy_class'):
+        try:
+            _run_post_compile(
+                compiled_program=compiled_program,
+                run_dir=run_dir,
+                deploy_program=pc['deploy_program'],
+                deploy_class=pc['deploy_class'],
+                config_dict=program_args,
+            )
+        except Exception as e:
+            print(f"Warning: post_compile transplant failed: {e}")
+            import traceback
+            traceback.print_exc()
+
     # Print compilation stats
     print("-" * 80)
     print("Compilation Stats")

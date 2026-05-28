@@ -145,7 +145,23 @@ properties:
   compile_params:
     type: object
     description: "Parameters passed to optimizer.compile()"
-  
+
+  post_compile:
+    type: object
+    description: |
+      Optional: after a successful compile, transplant the trained wrapper's
+      state into a different (deploy-shaped) class with matching predictor
+      topology. compile.py writes the merged artifact to <run_dir>/merged/
+      and the worker uploads it alongside compile/.
+    required: [deploy_program, deploy_class]
+    properties:
+      deploy_program:
+        type: string
+        description: "Base-relative path to the deploy program.py (must define `class <deploy_class>`)."
+      deploy_class:
+        type: string
+        description: "Name of the deploy class inside deploy_program."
+
   metadata:
     type: object
     description: "Optional metadata about the configuration"
