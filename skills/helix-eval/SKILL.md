@@ -93,6 +93,42 @@ this eval, click through for the observation tree + per-call input/output.
 Langfuse data, no separate login. The viewer is built into Helix; Langfuse
 itself is not externally accessible.
 
+## Gotcha: re-eval fails on a missing sibling module
+
+`program.pkl` bundles the source of `program.py` *as a string*, but that
+source resolves any program-version-local sibling imports (e.g.
+`from .tool_registry import …`) against the **on-disk** program-version
+directory at load time, not against the pickle. If a sibling module that
+existed at compile time has since been deleted or renamed in the worktree,
+the worker fails to load the compile artifact:
+
+```
+Error loading compiled program: [Errno 2] No such file or directory:
+'.../programs/<name>/<version>/tool_registry.py'
+```
+
+Fix: restore the missing file in your worktree, then submit the eval. The
+overlay bundle is computed as `git diff HEAD -- <overlay-roots>` plus any
+untracked files under the overlay roots, so a restored-but-uncommitted
+file under `programs/<name>/<version>/` ships in the bundle and lands on
+the worker alongside the materialized program. After the eval finishes,
+remove the file again.
+
+```bash
+# Restore from the commit that still had it (use `git log --oneline -- <path>`
+# to find a good source revision):
+git show <commit-sha>:<path-to-deleted-file> > <path-to-deleted-file>
+
+# Now submit the eval — overlay bundle picks up the untracked file:
+helix submit eval <eval-config> --compile-job <uuid>
+
+# When done:
+rm <path-to-deleted-file>
+```
+
+This only affects re-eval of an *old* compile; fresh `helix-compile` runs
+bundle the *current* source and don't need any restoration.
+
 ## Continuing to deploy
 
 `helix export <eval-job-id>` materializes a legacy results layout (evals/
