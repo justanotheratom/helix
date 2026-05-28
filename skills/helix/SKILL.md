@@ -10,21 +10,29 @@ compile/eval job lifecycle (durable Postgres queue, content-addressed
 snapshots, per-snapshot uv venv, Langfuse traces, blob artifacts). It runs
 from a clone — no published image registry.
 
-## One-time setup
+## First-time setup
+
+If Helix isn't yet installed on this machine (no `$HELIX_HOME`, no clone,
+no `.helix.toml` in the repo, stack not running), use the **`helix-setup`**
+skill — it walks through cloning Helix, syncing the workspace, scaffolding
+`.helix.toml`, writing provider keys, and bringing the stack up. Idempotent.
+
+Day-to-day, after setup, all `helix …` commands run from the **consumer
+worktree** (the dir whose `.helix.toml` you want to operate on). Invocation:
 
 ```bash
-# 1) Clone Helix wherever you like.
-git clone https://github.com/justanotheratom/helix ~/GitHub/helix
-export HELIX_HOME=~/GitHub/helix
-
-# 2) Define a `helix` shortcut that runs the CLI from the workspace. First
-#    invocation will sync the workspace venv from helix/uv.lock (one-time).
-helix() { uv run --project "$HELIX_HOME" helix "$@"; }
+uv run --project "$HELIX_HOME" helix <command> [args...]
 ```
 
-Run all `helix …` commands from your **consumer worktree** — the one with a
-`.helix.toml`. The CLI's stack commands (`up`, `down`, `dev …`) operate on
-`$HELIX_HOME/deploy/`; `submit`/`status`/etc. operate on the worktree.
+Optional shell alias for interactive use:
+
+```bash
+alias helix='uv run --project $HELIX_HOME helix'
+```
+
+Stack commands (`up`, `down`, `status`, `dev …`) operate on
+`$HELIX_HOME/deploy/`; `submit`/`status`/`logs`/etc. operate on the
+worktree's `.helix.toml`.
 
 ## Consumer onboarding
 

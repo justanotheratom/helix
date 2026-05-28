@@ -10,18 +10,23 @@ Helix queues the eval, materializes the parent compile's artifacts on the
 worker, runs `evaluate.py` against the eval config, and streams progress +
 final metrics into the Helix UI.
 
-## Running the Helix CLI
+## Preflight
 
-Assumes Helix is cloned and HELIX_HOME is set. If not, see the `helix`
-skill for one-time setup. Quick form:
+This skill assumes Helix is already installed and the stack is up. If any
+of these are missing, **run the `helix-setup` skill first** — it's idempotent:
+
+- `$HELIX_HOME` set and the Helix repo cloned there.
+- `.helix.toml` present in the consumer worktree.
+- `$HELIX_HOME/deploy/.env` written (provider keys).
+- The stack running (`uv run --project $HELIX_HOME helix status` shows
+  every helix-* container `Up`).
+
+All `helix …` commands below run from the **consumer worktree** (the dir
+whose `.helix.toml` you want to run against), invoked as:
 
 ```bash
-export HELIX_HOME=~/GitHub/helix
-helix() { uv run --project "$HELIX_HOME" helix "$@"; }
+uv run --project "$HELIX_HOME" helix <command> [args...]
 ```
-
-Run all `helix …` commands from the **consumer worktree** (the dir whose
-`.helix.toml` you want to run against).
 
 ## Usage
 

@@ -10,6 +10,32 @@ This repository is **run-from-clone**: there is no published CLI or image
 registry yet. You clone it, build the images locally, and run the CLI from
 source against your consumer repo.
 
+## Install the skills, then ask your agent
+
+If you're using Claude Code (or any agent that supports
+[`skills.sh`](https://www.skills.sh/) skills), the fastest way to start is
+to install the Helix skills and then just describe what you want:
+
+```bash
+# In your consumer repo:
+npx skills add justanotheratom/helix
+```
+
+Then talk to your agent:
+
+> *"Set up helix in this repo."*
+> *"Compile my DSPy program at `<base>/programs/<p>/<v>/compile.config.NNNN.yaml`."*
+> *"Eval compile job `<uuid>` on the test split."*
+> *"Export eval job `<uuid>` to a results dir."*
+
+The `helix-setup` skill handles first-time installation end to end (clone
+this repo, sync the workspace venv, scaffold `.helix.toml`, write provider
+keys, bring the stack up); `helix-compile` / `helix-eval` / `helix-export`
+drive the workflows; `helix` is the catch-all CLI reference. All four are
+in `skills/` and installed by the command above.
+
+Prefer driving Helix directly from the shell? Read on.
+
 ## Layout
 
 ```

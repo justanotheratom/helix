@@ -10,18 +10,23 @@ Helix queues it, publishes a content-addressed snapshot of the consumer's
 source, materializes the per-snapshot uv venv on the worker, and streams
 GEPA progress live in the Helix UI. An eval is auto-chained on success.
 
-## Running the Helix CLI
+## Preflight
 
-Assumes Helix is cloned and HELIX_HOME is set. If not, see the `helix`
-skill for one-time setup. Quick form:
+This skill assumes Helix is already installed and the stack is up. If any
+of these are missing, **run the `helix-setup` skill first** — it's idempotent:
+
+- `$HELIX_HOME` set and the Helix repo cloned there.
+- `.helix.toml` present in the consumer worktree.
+- `$HELIX_HOME/deploy/.env` written (provider keys).
+- The stack running (`uv run --project $HELIX_HOME helix status` shows
+  every helix-* container `Up`).
+
+All `helix …` commands below run from the **consumer worktree** (the dir
+whose `.helix.toml` you want to run against), invoked as:
 
 ```bash
-export HELIX_HOME=~/GitHub/helix
-helix() { uv run --project "$HELIX_HOME" helix "$@"; }
+uv run --project "$HELIX_HOME" helix <command> [args...]
 ```
-
-Run all `helix …` commands from the **consumer worktree** (the dir whose
-`.helix.toml` you want to run against).
 
 ## Usage
 

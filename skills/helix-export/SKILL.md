@@ -10,18 +10,20 @@ EVAL_SUMMARY.md, program.hash, data symlink) into the legacy on-disk
 `results/<NNNN>/` layout — the shape downstream deploy/inspection scripts
 usually expect.
 
-## Running the Helix CLI
+## Preflight
 
-Assumes Helix is cloned and HELIX_HOME is set. If not, see the `helix`
-skill for one-time setup. Quick form:
+This skill assumes Helix is already installed. If `$HELIX_HOME` isn't
+set or the Helix repo isn't cloned, **run the `helix-setup` skill first**
+— it's idempotent. The stack doesn't need to be running for `helix export`
+itself, but the job whose artifacts you're materializing must have
+completed.
+
+All `helix …` commands below run from the **consumer worktree** (the dir
+whose `.helix.toml` you want results written under), invoked as:
 
 ```bash
-export HELIX_HOME=~/GitHub/helix
-helix() { uv run --project "$HELIX_HOME" helix "$@"; }
+uv run --project "$HELIX_HOME" helix <command> [args...]
 ```
-
-Run from the **consumer worktree** (the dir whose `.helix.toml` you want
-results written under).
 
 ## Usage
 
