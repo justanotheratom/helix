@@ -66,9 +66,9 @@ def _compose_env() -> dict:
     c = _cfg()
     env = dict(os.environ)
     env["HELIX_HOST_PORT"] = str(c.stack.host_port)
-    env["LANGFUSE_PORT"] = str(c.stack.langfuse_port)
-    env["LANGFUSE_MINIO_PORT"] = str(c.stack.langfuse_minio_port)
     env.setdefault("LANGFUSE_INIT_PROJECT_ID", c.stack.langfuse_project_id)
+    # LANGFUSE_PORT / LANGFUSE_MINIO_PORT are no longer consumed by compose
+    # (Langfuse is internal-only); legacy keys in .helix.toml are ignored.
     return env
 
 

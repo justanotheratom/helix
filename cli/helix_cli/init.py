@@ -48,8 +48,6 @@ python = "{python}"
 
 [stack]
 host_port = {host_port}
-langfuse_port = {langfuse_port}
-langfuse_minio_port = {langfuse_minio_port}
 langfuse_project_id = "{langfuse_project_id}"
 """
 
@@ -94,8 +92,6 @@ def cmd_init(args: argparse.Namespace) -> int:
         lockfile=lockfile,
         python="3.13",
         host_port=7000,
-        langfuse_port=3010,
-        langfuse_minio_port=9090,
         langfuse_project_id=langfuse_project,
     )
 

@@ -108,7 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
     op.add_argument("job_id", nargs="?")
     op.set_defaults(func=cmd_open)
 
-    tr = sub.add_parser("traces", help="Open Langfuse via auto-SSO for a job")
+    tr = sub.add_parser("traces", help="Open the Helix trace view for a job")
     tr.add_argument("job_id")
     tr.set_defaults(func=cmd_traces)
 
