@@ -12,6 +12,9 @@ dependencies = [
     "pydantic>=2.7",
     "PyYAML>=6.0",
     "structlog>=24.1",
+    # The worker shells out to `uv sync` at runtime to build the per-snapshot
+    # consumer venv, so uv must be on PATH inside the worker image.
+    "uv>=0.5",
 ]
 
 [build-system]

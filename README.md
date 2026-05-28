@@ -48,22 +48,29 @@ below derive it for you.)
 ## Use the CLI against a consumer repo
 
 The CLI runs from this clone but operates on **your** repo (the one with a
-`.helix.toml`). Point Python at this clone and run from your consumer worktree:
+`.helix.toml`). The repo is a uv workspace with the `helix` script defined in
+`cli/pyproject.toml`, so a single `uv run --project` invocation handles it:
 
 ```bash
 export HELIX_HOME=~/GitHub/helix
-export PYTHONPATH="$HELIX_HOME/cli:$HELIX_HOME/common"
 
 cd ~/your-consumer-repo          # has .helix.toml
-python -m helix_cli doctor       # audit: no consumer coupling in Helix code
-python -m helix_cli up           # bring the stack up (uses your repo_id/ports)
-python -m helix_cli submit compile path/to/compile.config.yaml
-python -m helix_cli status <job-id>
+uv run --project $HELIX_HOME helix doctor    # audits coupling
+uv run --project $HELIX_HOME helix up        # bring the stack up
+uv run --project $HELIX_HOME helix submit compile path/to/compile.config.yaml
+uv run --project $HELIX_HOME helix status <job-id>
 ```
 
-`HELIX_HOME` tells the stack commands where Helix's `deploy/` lives; the
-consumer config (`repo_id`, ports, Langfuse project) is read from the
-`.helix.toml` in the directory you run from.
+The first invocation syncs the workspace venv from `uv.lock` (one-time);
+subsequent runs are instant. `HELIX_HOME` tells the stack commands where
+Helix's `deploy/` lives; the consumer config (`repo_id`, ports, Langfuse
+project) is read from the `.helix.toml` in the directory you run from.
+
+A shell alias makes it shorter:
+
+```bash
+alias helix='uv run --project ~/GitHub/helix helix'
+```
 
 ## Dev loop — edit Helix code without rebuilds
 
@@ -88,8 +95,8 @@ snapshots, and artifacts survive restarts and rebuilds alike; only
 
 ```bash
 cd ~/new-repo
-python -m helix_cli init     # scaffolds a .helix.toml (validated)
-python -m helix_cli up
+uv run --project ~/GitHub/helix helix init   # scaffolds a .helix.toml (validated)
+uv run --project ~/GitHub/helix helix up
 ```
 
 ## Concepts

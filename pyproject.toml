@@ -1,0 +1,27 @@
+# Workspace root for Helix.
+#
+# This pyproject doesn't ship its own package — it's purely the workspace
+# anchor so a single `uv.lock` (next to this file) reproducibly pins every
+# dependency for api/, worker/, cli/, and common/.
+#
+# Dockerfile builds and `helix dev up` both call `uv sync --frozen --package
+# <member>` against this workspace; the CLI runs from a clone via
+# `uv run --project $HELIX_HOME helix ...`.
+
+[project]
+name = "helix-workspace"
+version = "0.1.0"
+description = "Helix monorepo workspace (api, worker, cli, common)."
+requires-python = ">=3.12"
+# Root depends on the CLI so `uv sync` at the workspace root (or `uv run
+# --project $HELIX_HOME helix ...`) installs the `helix` script + helix-common.
+# Dockerfile images use `uv sync --package helix-{api,worker} --no-install-
+# workspace` and so don't drag the CLI in.
+dependencies = ["helix-cli"]
+
+[tool.uv.workspace]
+members = ["api", "worker", "cli", "common"]
+
+[tool.uv.sources]
+helix-cli    = { workspace = true }
+helix-common = { workspace = true }
