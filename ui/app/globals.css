@@ -61,6 +61,13 @@ tr:hover td { background: var(--panel); }
 .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: 8px; animation: pulse 1.2s ease-in-out infinite; vertical-align: middle; }
 @keyframes pulse { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
 .err-banner { margin-top: 12px; padding: 8px 10px; border: 1px solid var(--bad); border-radius: 6px; color: var(--bad); font-size: 13px; }
+
+/* Inline progress in the jobs table */
+.run-progress { display: flex; flex-direction: column; gap: 4px; min-width: 280px; }
+.run-line { display: flex; gap: 10px; align-items: center; font-size: 12px; }
+.run-tag { background: var(--panel-2); color: var(--muted); padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+.mini-bar { height: 4px; background: #0a0d12; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+.mini-bar > span { display: block; height: 100%; transition: width .4s ease; }
 .btn {
   display: inline-block; padding: 6px 12px; margin-right: 8px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 6px;

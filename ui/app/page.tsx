@@ -4,7 +4,69 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, Job, JobStatus } from "@/lib/api";
 
-const STATUSES: JobStatus[] = ["queued", "running", "succeeded", "failed", "cancelled"];
+const STATUSES: JobStatus[] = ["queued", "running", "succeeded", "failed", "cancelled", "blocked"];
+
+// Worker publishes `progress` into jobs.summary every heartbeat tick. Shape
+// matches lib/progress.ts so we don't reparse logs here.
+type Progress = {
+  phase: "compile" | "compile-done" | "eval" | "done" | "unknown";
+  compile?: {
+    rolloutsCur: number | null; rolloutsTotal: number | null; rolloutsPct: number | null;
+    remaining: string | null; lastIter: number | null;
+    bestValset: number | null; paretoFront: number | null; wins: number; budget: number | null;
+  };
+  eval?: {
+    rowsDone: number; rowsTotal: number; rowsPct: number;
+    accPct: number; costUsd: number; eta: string;
+  };
+};
+
+function pctScore(v: number | null | undefined): string {
+  if (v == null) return "–";
+  return `${(v <= 1 ? v * 100 : v).toFixed(1)}%`;
+}
+
+function MiniBar({ pct, tone = "accent" }: { pct: number | null | undefined; tone?: string }) {
+  return (
+    <div className="mini-bar">
+      <span style={{ width: `${Math.min(100, pct ?? 0)}%`, background: `var(--${tone})` }} />
+    </div>
+  );
+}
+
+function RunningCell({ p }: { p: Progress }) {
+  if (p.phase === "eval" && p.eval) {
+    const e = p.eval;
+    return (
+      <div className="run-progress">
+        <div className="run-line">
+          <span className="run-tag">eval</span>
+          <span>{e.rowsDone.toLocaleString()}/{e.rowsTotal.toLocaleString()} ({e.rowsPct}%)</span>
+          <span>acc {e.accPct}%</span>
+          <span className="muted">${e.costUsd.toFixed(2)} · ETA {e.eta}</span>
+        </div>
+        <MiniBar pct={e.rowsPct} tone="good" />
+      </div>
+    );
+  }
+  if (p.compile) {
+    const c = p.compile;
+    return (
+      <div className="run-progress">
+        <div className="run-line">
+          <span className="run-tag">GEPA</span>
+          {c.rolloutsTotal != null && (
+            <span>{c.rolloutsCur}/{c.rolloutsTotal} ({c.rolloutsPct ?? 0}%)</span>
+          )}
+          {c.bestValset != null && <span>best {pctScore(c.bestValset)}</span>}
+          {c.lastIter != null && <span className="muted">iter {c.lastIter}{c.remaining && c.remaining !== "?" ? ` · ETA ${c.remaining}` : ""}</span>}
+        </div>
+        <MiniBar pct={c.rolloutsPct} />
+      </div>
+    );
+  }
+  return <span className="muted">…starting</span>;
+}
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<Job[] | null>(null);
@@ -77,7 +139,9 @@ export default function JobsPage() {
                 <td>{j.dataset ?? "-"}/{j.split ?? "-"}</td>
                 <td>{j.started_at?.slice(11, 19) ?? "-"}</td>
                 <td>{durationFmt(j.started_at, j.ended_at)}</td>
-                <td>{summaryFmt(j.summary)}</td>
+                <td>{j.status === "running" && j.summary && (j.summary as { progress?: Progress }).progress
+                  ? <RunningCell p={(j.summary as { progress: Progress }).progress} />
+                  : summaryFmt(j.summary)}</td>
               </tr>
             ))}
           </tbody>

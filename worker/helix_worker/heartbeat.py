@@ -2,6 +2,8 @@
 current job's lease at the same cadence."""
 from __future__ import annotations
 
+import json
+import os
 import threading
 import time
 import uuid
@@ -10,7 +12,7 @@ import redis as redis_lib
 import structlog
 from sqlalchemy import text
 
-from . import settings
+from . import progress_parser, settings
 from .db import engine
 
 
@@ -84,6 +86,40 @@ class Heartbeat:
                 ).first()
                 if row and row[0]:
                     self._republish_cancel(self._current_job)
+
+                # Publish a live progress snapshot into jobs.summary so the
+                # home/list view can show real progress per running row
+                # without per-row log streaming on the client.
+                self._publish_progress(conn, self._current_job)
+
+    def _publish_progress(self, conn, job_id: uuid.UUID) -> None:
+        log_path = os.path.join("/work", str(job_id), "stdout.log")
+        try:
+            prog = progress_parser.parse_file(log_path)
+        except Exception as e:  # noqa: BLE001 — never let parsing kill the heartbeat
+            log.warning("progress_parse_failed", error=str(e))
+            return
+        if not prog:
+            return
+        try:
+            conn.execute(
+                text(
+                    """
+                    UPDATE jobs
+                    SET summary = COALESCE(summary, CAST('{}' AS jsonb))
+                                  || jsonb_build_object('progress', CAST(:p AS jsonb))
+                    WHERE id = :jid AND worker_id = :wid AND attempt = :att
+                    """
+                ),
+                {
+                    "p": json.dumps(prog),
+                    "jid": job_id,
+                    "wid": settings.WORKER_ID,
+                    "att": self._current_attempt,
+                },
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning("progress_write_failed", error=str(e))
 
     def _republish_cancel(self, job_id: uuid.UUID) -> None:
         try:
