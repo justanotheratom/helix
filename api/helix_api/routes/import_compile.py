@@ -11,7 +11,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 
 from .. import blob, db, dispatch, schemas
-from ..langfuse_link import traces_deep_link
+from ..langfuse_link import traces_url
 from ..settings import settings
 
 router = APIRouter(tags=["jobs"])
@@ -43,7 +43,7 @@ async def import_compile(
                 job_id=existing.id,
                 run_label=existing.run_label,
                 ui_url=f"{settings.public_base_url}/jobs/{existing.id}",
-                traces_url=traces_deep_link(existing.run_label),
+                traces_url=traces_url(existing.id),
             )
 
         job = dispatch.insert_queued_job(
@@ -129,7 +129,7 @@ async def import_compile(
             job_id=job.id,
             run_label=job.run_label,
             ui_url=f"{settings.public_base_url}/jobs/{job.id}",
-            traces_url=traces_deep_link(job.run_label),
+            traces_url=traces_url(job.id),
         )
 
 

@@ -171,9 +171,6 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const cancel = async () => {
     await api.cancelJob(jobId);
   };
-  const openTraces = () => {
-    window.location.href = job.traces_url;
-  };
 
   return (
     <div>
@@ -184,7 +181,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
       </h1>
 
       <div className="row-actions">
-        <button className="btn" onClick={openTraces}>open in langfuse</button>
+        <Link className="btn" href={`/jobs/${jobId}/traces`}>view traces →</Link>
         <a className="btn" href={api.artifactsTarUrl(jobId)}>download artifacts.tar.gz</a>
         {(job.status === "queued" || job.status === "running") && (
           <button className="btn danger" onClick={cancel}>cancel</button>

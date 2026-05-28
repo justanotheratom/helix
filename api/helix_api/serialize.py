@@ -1,13 +1,10 @@
 """ORM → API-schema mapping helpers."""
 from __future__ import annotations
 
-import urllib.parse
-
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from . import db, schemas
-from .langfuse_link import traces_deep_link
+from .langfuse_link import traces_url as _traces_url
 from .settings import settings
 
 
@@ -21,7 +18,7 @@ def job_to_schema(session: Session, job: db.Job) -> schemas.Job:
         program_name = prog.name if prog else None
 
     ui_url = f"{settings.public_base_url}/jobs/{job.id}"
-    traces_url = traces_deep_link(job.run_label)  # absolute :3010 URL
+    traces_url = _traces_url(job.id)
 
     return schemas.Job(
         id=job.id,

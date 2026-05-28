@@ -39,6 +39,42 @@ export interface Job {
   traces_url: string;
 }
 
+// Langfuse trace shapes (proxied through helix-api; only the fields we render).
+export interface TraceSummary {
+  id: string;
+  name: string | null;
+  timestamp: string;
+  environment: string | null;
+  latency: number | null;        // seconds (Langfuse convention)
+  totalCost: number | null;      // USD
+  input: unknown;
+  output: unknown;
+  metadata?: Record<string, unknown> | null;
+}
+export interface TraceListResponse {
+  data: TraceSummary[];
+  meta: { page: number; limit: number; totalItems: number; totalPages: number };
+}
+export interface Observation {
+  id: string;
+  parentObservationId: string | null;
+  type: "GENERATION" | "SPAN" | "EVENT" | "CHAIN" | string;
+  name: string | null;
+  startTime: string;
+  endTime: string | null;
+  latency: number | null;        // seconds
+  model: string | null;
+  totalCost: number | null;
+  usage?: { input?: number; output?: number; total?: number } | null;
+  level?: string | null;         // DEFAULT / WARNING / ERROR
+  statusMessage?: string | null;
+  input?: unknown;
+  output?: unknown;
+}
+export interface TraceDetail extends TraceSummary {
+  observations: Observation[];
+}
+
 export interface Artifact {
   id: string;
   job_id: string;
@@ -80,5 +116,11 @@ export const api = {
   },
   artifactUrl(jobId: string, artId: string): string {
     return `/api/jobs/${jobId}/artifacts/${artId}`;
+  },
+  listJobTraces(jobId: string, limit = 50, page = 1): Promise<TraceListResponse> {
+    return fetchJSON<TraceListResponse>(`/jobs/${jobId}/traces?limit=${limit}&page=${page}`);
+  },
+  getTrace(traceId: string): Promise<TraceDetail> {
+    return fetchJSON<TraceDetail>(`/traces/${traceId}`);
   },
 };

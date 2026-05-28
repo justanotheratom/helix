@@ -16,7 +16,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import desc, select
 
 from .. import blob, db, dispatch, redis_bus, schemas
-from ..langfuse_link import traces_deep_link
+from ..langfuse_link import traces_url
 from ..serialize import job_to_schema
 from ..settings import settings
 
@@ -83,7 +83,7 @@ async def submit_compile(
                     job_id=job.id,
                     run_label=job.run_label,
                     ui_url=f"{settings.public_base_url}/jobs/{job.id}",
-                    traces_url=traces_deep_link(job.run_label),
+                    traces_url=traces_url(job.id),
                 )
             )
         session.commit()
@@ -148,7 +148,7 @@ async def submit_eval(
                     job_id=job.id,
                     run_label=job.run_label,
                     ui_url=f"{settings.public_base_url}/jobs/{job.id}",
-                    traces_url=traces_deep_link(job.run_label),
+                    traces_url=traces_url(job.id),
                 )
             )
         session.commit()
@@ -229,13 +229,9 @@ def cancel_job(job_id: uuid.UUID) -> schemas.Job:
         return job_to_schema(session, job)
 
 
-@router.get("/{job_id}/traces", response_model=schemas.TracesUrl)
-def get_traces_url(job_id: uuid.UUID) -> schemas.TracesUrl:
-    with db.get_session() as session:
-        job = session.get(db.Job, job_id)
-        if job is None:
-            raise HTTPException(404, "job not found")
-        return schemas.TracesUrl(url=traces_deep_link(job.run_label), run_label=job.run_label)
+# /{job_id}/traces is served by routes/traces.py (lists Langfuse traces for
+# this job via the internal proxy); the legacy deep-link endpoint is gone now
+# that Langfuse isn't externally reachable.
 
 
 # ----- helpers ----------------------------------------------------------------

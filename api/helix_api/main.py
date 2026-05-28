@@ -7,7 +7,7 @@ import yaml
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
-from .routes import artifacts, gc, import_compile, jobs, logs, runtime, snapshots
+from .routes import artifacts, gc, import_compile, jobs, logs, runtime, snapshots, traces
 from .blob import ensure_bucket
 
 
@@ -54,6 +54,7 @@ app.include_router(logs.router)
 app.include_router(runtime.router)
 app.include_router(snapshots.router)
 app.include_router(gc.router)
+app.include_router(traces.router)
 
 
 @app.get("/healthz")

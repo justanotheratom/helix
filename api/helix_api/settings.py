@@ -28,6 +28,10 @@ class LangfuseSettings(BaseSettings):
     langfuse_init_user_email: str = ""
     langfuse_init_user_password: str = ""
     langfuse_init_project_id: str = "helix"   # generic default; overridden by env/config
+    # The project keys the worker uses to publish traces also let helix-api
+    # READ traces via the Langfuse REST API (HTTP basic, public:secret).
+    langfuse_init_project_public_key: str = ""
+    langfuse_init_project_secret_key: str = ""
 
 
 settings = Settings()

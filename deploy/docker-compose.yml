@@ -74,6 +74,10 @@ services:
             LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL}
             LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD}
             LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID}
+            # Project keys let helix-api READ traces from Langfuse on the
+            # internal network (basic auth, public:secret) for the inline viewer.
+            LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
+            LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY}
         depends_on:
             helix-postgres: { condition: service_healthy }
             helix-minio:    { condition: service_healthy }
@@ -188,12 +192,9 @@ services:
     langfuse-web:
         image: docker.io/langfuse/langfuse:3
         restart: unless-stopped
-        # Two-port fallback: Langfuse keeps its own loopback port because
-        # upstream `langfuse/langfuse:3` is built without
-        # NEXT_PUBLIC_BASE_PATH and a Next.js subpath rebuild is more
-        # work than is justified in v1.
-        ports:
-            - "127.0.0.1:${LANGFUSE_PORT:-3010}:3000"
+        # Internal-only: helix-api reads traces from langfuse-web on the
+        # docker network and the Helix UI renders them at /jobs/{id}/traces.
+        # No host-port binding — Langfuse is never directly exposed.
         depends_on: &langfuse-deps
             langfuse-postgres:   { condition: service_healthy }
             langfuse-minio:      { condition: service_healthy }
@@ -274,9 +275,8 @@ services:
             MINIO_ROOT_USER: ${LANGFUSE_MINIO_ROOT_USER}
             MINIO_ROOT_PASSWORD: ${LANGFUSE_MINIO_ROOT_PASSWORD}
             MC_HOST_local: http://${LANGFUSE_MINIO_ROOT_USER}:${LANGFUSE_MINIO_ROOT_PASSWORD}@localhost:9000
-        ports:
-            # Needed for pre-signed media URLs Langfuse hands to the browser.
-            - "127.0.0.1:${LANGFUSE_MINIO_PORT:-9090}:9000"
+        # Internal-only: the browser no longer talks to Langfuse, so no
+        # pre-signed media URLs need to reach this minio from the host.
         volumes:
             - langfuse_minio_data:/data
         healthcheck:
