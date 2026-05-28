@@ -2,12 +2,21 @@
 // (Once codegen.sh is wired, this file is replaced by `import { client } from './generated/client'`.)
 
 export type JobType = "compile" | "eval";
-export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+export type JobStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "blocked";
 
 export interface Job {
   id: string;
   type: JobType;
   status: JobStatus;
+  repo_id: string | null;
+  snapshot_id: string | null;
+  blocked_reason: string | null;
   program: string | null;
   version: string | null;
   dataset: string | null;

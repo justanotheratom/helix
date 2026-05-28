@@ -1,8 +1,94 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, Artifact, Job } from "@/lib/api";
+import { parseProgress, Progress } from "@/lib/progress";
+
+function Bar({ pct, tone = "accent" }: { pct: number | null; tone?: string }) {
+  return (
+    <div className="bar">
+      <span style={{ width: `${Math.min(100, pct ?? 0)}%`, background: `var(--${tone})` }} />
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="stat">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+    </div>
+  );
+}
+
+function ProgressView({ p, status }: { p: Progress; status: string }) {
+  const active = status === "running";
+  const c = p.compile;
+  const e = p.eval;
+  if (!c && !e && p.errorCount === 0) return null;
+  return (
+    <section className="progress">
+      <h2>
+        Progress <span className="tag">{p.phase}</span>
+        {active && <span className="pulse" title="live" />}
+      </h2>
+
+      {c && (
+        <div className="phase-block">
+          <div className="phase-title">GEPA compile</div>
+          {c.rolloutsTotal != null && (
+            <>
+              <div className="bar-row">
+                <span>
+                  rollouts {c.rolloutsCur}/{c.rolloutsTotal}
+                  {c.rolloutsPct != null && ` (${c.rolloutsPct}%)`}
+                </span>
+                <span className="muted">
+                  {c.remaining && c.remaining !== "?" ? `ETA ${c.remaining}` : ""} {c.rate ? `· ${c.rate}` : ""}
+                </span>
+              </div>
+              <Bar pct={c.rolloutsPct} />
+            </>
+          )}
+          <div className="tiles">
+            <Stat label="best valset" value={c.bestValset != null ? `${(c.bestValset * (c.bestValset <= 1 ? 100 : 1)).toFixed(1)}%` : "–"} />
+            <Stat label="pareto front" value={c.paretoFront != null ? `${(c.paretoFront * (c.paretoFront <= 1 ? 100 : 1)).toFixed(1)}%` : "–"} />
+            <Stat label="iteration" value={c.lastIter ?? "–"} />
+            <Stat label="new candidates" value={c.wins} />
+            {c.budget != null && <Stat label="budget (calls)" value={c.budget.toLocaleString()} />}
+          </div>
+        </div>
+      )}
+
+      {e && (
+        <div className="phase-block">
+          <div className="phase-title">Held-out eval</div>
+          <div className="bar-row">
+            <span>
+              rows {e.rowsDone.toLocaleString()}/{e.rowsTotal.toLocaleString()} ({e.rowsPct}%)
+            </span>
+            <span className="muted">{e.eta !== "0s" ? `ETA ${e.eta}` : "done"}</span>
+          </div>
+          <Bar pct={e.rowsPct} tone="good" />
+          <div className="tiles">
+            <Stat label="accuracy" value={`${e.accPct}%`} />
+            <Stat label="cost" value={`$${e.costUsd.toFixed(2)}`} />
+            {e.costPer1kRows != null && <Stat label="$/1k rows" value={`$${e.costPer1kRows.toFixed(3)}`} />}
+            <Stat label="tokens" value={e.tokensTotal.toLocaleString()} />
+            <Stat label="latency med" value={`${e.latencyMedMs}ms`} />
+          </div>
+        </div>
+      )}
+
+      {p.errorCount > 0 && (
+        <div className="err-banner">
+          {p.errorCount} error{p.errorCount > 1 ? "s" : ""} seen — last: <code>{p.lastError}</code>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function JobDetail({ params }: { params: { id: string } }) {
   const jobId = params.id;
@@ -11,6 +97,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   const [err, setErr] = useState<string | null>(null);
   const [logLines, setLogLines] = useState<string[]>([]);
   const logRef = useRef<HTMLPreElement>(null);
+  const seededRef = useRef(false);
 
   // Poll job + artifacts.
   useEffect(() => {
@@ -33,9 +120,25 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     };
   }, [jobId]);
 
-  // Live log SSE.
+  // For terminal jobs the SSE stream has no replay, so seed the parsed
+  // progress + log view once from the uploaded helix/stdout.log artifact.
   useEffect(() => {
-    if (!job || job.status === "queued") return;
+    const terminal = job && ["succeeded", "failed", "cancelled"].includes(job.status);
+    if (!terminal || seededRef.current || !artifacts || logLines.length > 0) return;
+    const log = artifacts.find((a) => a.relative_path === "helix/stdout.log");
+    if (!log) return;
+    seededRef.current = true;
+    fetch(api.artifactUrl(jobId, log.id))
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((t) => {
+        if (t) setLogLines(t.split("\n"));
+      })
+      .catch(() => {});
+  }, [job?.status, artifacts, jobId, logLines.length]);
+
+  // Live log SSE — only while running (terminal jobs are seeded above).
+  useEffect(() => {
+    if (!job || job.status !== "running") return;
     const es = new EventSource(`/api/jobs/${jobId}/logs?follow=true`);
     es.onmessage = (ev) => {
       try {
@@ -59,6 +162,8 @@ export default function JobDetail({ params }: { params: { id: string } }) {
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logLines]);
+
+  const progress = useMemo(() => parseProgress(logLines), [logLines]);
 
   if (err) return <p style={{ color: "var(--bad)" }}>error: {err}</p>;
   if (!job) return <p>loading…</p>;
@@ -91,13 +196,16 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         )}
       </div>
 
+      <ProgressView p={progress} status={job.status} />
+
       <h2>Metadata</h2>
       <dl className="kv">
         <dt>program/version</dt><dd>{job.program}/{job.version}</dd>
         <dt>dataset/split</dt><dd>{job.dataset}/{job.split}</dd>
         <dt>config_path</dt><dd>{job.config_path ?? "-"}</dd>
         <dt>run_label</dt><dd>{job.run_label}</dd>
-        <dt>baked_sha</dt><dd>{job.baked_sha ?? "(imported)"}</dd>
+        <dt>snapshot_id</dt><dd>{job.snapshot_id ?? "(imported)"}</dd>
+        {job.blocked_reason && (<><dt>blocked_reason</dt><dd>{job.blocked_reason}</dd></>)}
         <dt>worker_id</dt><dd>{job.worker_id ?? "-"}</dd>
         <dt>emitted_run_number</dt><dd>{job.emitted_run_number ?? "-"}</dd>
         <dt>attempt</dt><dd>{job.attempt}</dd>
