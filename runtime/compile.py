@@ -1,9 +1,11 @@
 import argparse
 import cloudpickle
+import hashlib
 import json
 import os
 import shutil
 import sys
+import traceback
 import yaml
 from pathlib import Path
 from typing import Any, Dict, List
@@ -142,7 +144,7 @@ def resolve_lm_config_references(config: Dict[str, Any], path: str = "") -> None
 
 def _run_post_compile(
     *,
-    compiled_program: Any,
+    state: Dict[str, Any],
     run_dir: Path,
     deploy_program: str,
     deploy_class: str,
@@ -152,9 +154,10 @@ def _run_post_compile(
 
     DSPy pattern: training compiled a single-LM-call wrapper that exposes
     inner predictors; the API serves a different class with matching predictor
-    topology. After a successful compile, dump_state from the trained wrapper,
-    instantiate the deploy class with the same state via load_state, and
-    re-pickle as a SelfContainedProgram. Round-trip-loads to confirm.
+    topology. After a successful compile, the caller already has the trained
+    wrapper's recursive dump_state — pass it in here, build a
+    SelfContainedProgram for the deploy class, pickle it, and round-trip-load
+    to confirm.
 
     Writes:
       <run_dir>/merged/compiled_program/program.pkl
@@ -165,8 +168,6 @@ def _run_post_compile(
     the trained wrapper (so dump_state/load_state transplants cleanly), and
     accept the same config_dict (or a superset that ignores extras).
     """
-    import hashlib
-
     deploy_src = (_base / deploy_program).resolve()
     if not deploy_src.is_file():
         raise FileNotFoundError(f"post_compile.deploy_program not found: {deploy_src}")
@@ -176,7 +177,6 @@ def _run_post_compile(
             f"deploy program {deploy_src} does not define `class {deploy_class}`"
         )
 
-    state = compiled_program.dump_state(json_mode=False)
     merged_wrapper = SelfContainedProgram(
         source_code=source,
         class_name=deploy_class,
@@ -187,9 +187,12 @@ def _run_post_compile(
     merged_dir = run_dir / "merged"
     out_dir = merged_dir / "compiled_program"
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Pickle to bytes once; write the file and hash the same bytes to avoid
+    # re-reading the artifact off disk just to compute its digest.
+    pkl_bytes = cloudpickle.dumps(merged_wrapper)
     pkl_path = out_dir / "program.pkl"
-    with open(pkl_path, "wb") as f:
-        cloudpickle.dump(merged_wrapper, f)
+    pkl_path.write_bytes(pkl_bytes)
 
     (out_dir / "metadata.json").write_text(json.dumps({
         "source": "compile.py post_compile",
@@ -197,7 +200,7 @@ def _run_post_compile(
         "class_name": deploy_class,
     }, indent=2))
 
-    digest = hashlib.sha256(pkl_path.read_bytes()).hexdigest()
+    digest = hashlib.sha256(pkl_bytes).hexdigest()
     (merged_dir / "program.hash").write_text(digest)
 
     # Round-trip verify: the merged artifact must load back as the deploy class.
@@ -516,6 +519,10 @@ def main():
             "cannot persist optimized instructions."
         )
 
+    # Hoisted so the optional post_compile transplant below can reuse it
+    # without calling dump_state a second time on the (deeply nested) program.
+    state: Dict[str, Any] | None = None
+
     try:
         # Read source code from the program module
         module_path = config['program']['module']
@@ -563,19 +570,20 @@ def main():
         print(f"Saved compiled program to {save_path}")
     except Exception as e:
         print(f"Error: Failed to save program: {e}")
-        import traceback
         traceback.print_exc()
 
     # Optional post-compile state transplant. Built-in: when the consumer's
     # compile.config declares a `post_compile:` block (deploy_program +
-    # deploy_class), dump the trained wrapper's state into a deploy-shaped
-    # class and write <run_dir>/merged/. helix export carries those merged/
-    # artifacts back to disk alongside compile/ via the worker's upload sweep.
-    pc = config.get('post_compile') or {}
-    if pc.get('deploy_program') and pc.get('deploy_class'):
+    # deploy_class — both required per the schema), instantiate a deploy-
+    # shaped class with the trained state and write <run_dir>/merged/.
+    # helix export carries those merged/ artifacts back to disk alongside
+    # compile/ via the worker's upload sweep. Skipped if dump_state failed
+    # above (we couldn't transplant anyway).
+    if config.get('post_compile') and state is not None:
+        pc = config['post_compile']
         try:
             _run_post_compile(
-                compiled_program=compiled_program,
+                state=state,
                 run_dir=run_dir,
                 deploy_program=pc['deploy_program'],
                 deploy_class=pc['deploy_class'],
@@ -583,7 +591,6 @@ def main():
             )
         except Exception as e:
             print(f"Warning: post_compile transplant failed: {e}")
-            import traceback
             traceback.print_exc()
 
     # Print compilation stats
