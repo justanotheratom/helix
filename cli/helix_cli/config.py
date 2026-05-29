@@ -18,6 +18,18 @@ HELIX_BASE_URL = os.environ.get("HELIX_BASE_URL", "http://127.0.0.1:7000")
 HELIX_API_BASE = f"{HELIX_BASE_URL}/api"
 
 
+def access_headers() -> dict[str, str]:
+    """Cloudflare Access service-token headers, for talking to a Helix that
+    sits behind Cloudflare Access (a remote/team deployment). Set both
+    CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET in the environment; when
+    unset (the local case) this returns {} and nothing changes."""
+    cid = os.environ.get("CF_ACCESS_CLIENT_ID")
+    secret = os.environ.get("CF_ACCESS_CLIENT_SECRET")
+    if cid and secret:
+        return {"CF-Access-Client-Id": cid, "CF-Access-Client-Secret": secret}
+    return {}
+
+
 @cache
 def repo_root() -> str:
     out = subprocess.run(

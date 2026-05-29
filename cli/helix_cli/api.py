@@ -10,11 +10,11 @@ from typing import Any
 
 import httpx
 
-from .config import HELIX_API_BASE
+from .config import HELIX_API_BASE, access_headers
 
 
 def _client() -> httpx.Client:
-    return httpx.Client(base_url=HELIX_API_BASE, timeout=60.0)
+    return httpx.Client(base_url=HELIX_API_BASE, timeout=60.0, headers=access_headers())
 
 
 def _check(resp: httpx.Response) -> Any:
@@ -114,7 +114,8 @@ def list_artifacts(job_id: str, **params) -> list[dict[str, Any]]:
 
 def stream_logs(job_id: str):
     """Yields decoded JSON lines from the SSE stream."""
-    with httpx.stream("GET", f"{HELIX_API_BASE}/jobs/{job_id}/logs", timeout=None) as r:
+    with httpx.stream("GET", f"{HELIX_API_BASE}/jobs/{job_id}/logs", timeout=None,
+                      headers=access_headers()) as r:
         if r.status_code != 200:
             raise SystemExit(f"helix logs error {r.status_code}")
         for raw in r.iter_lines():
@@ -135,6 +136,7 @@ def download_artifacts_tar(job_id: str, dest_path: str, prefix: str | None = Non
         f"{HELIX_API_BASE}/jobs/{job_id}/artifacts.tar.gz",
         params=params,
         timeout=None,
+        headers=access_headers(),
     ) as r:
         if r.status_code != 200:
             raise SystemExit(f"helix download error {r.status_code}: {r.read().decode(errors='replace')}")
