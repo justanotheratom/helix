@@ -1,0 +1,26 @@
+# Cloudflare Tunnel overlay — expose the Helix UI/API to a team without
+# opening any inbound port, with Cloudflare Access (SSO) in front.
+#
+# Layer on top of the base (+ prod) compose:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#     -f docker-compose.cloudflare.yml --env-file .env up -d
+#
+# Prereqs (Cloudflare Zero Trust dashboard):
+#   1. Create a tunnel (Networks → Tunnels, connector "Cloudflared") → copy its
+#      token into CF_TUNNEL_TOKEN in .env.
+#   2. Public Hostname: helix.<yourdomain> → Service HTTP → URL  caddy:7000
+#      (cloudflared resolves `caddy` over this compose network).
+#   3. Access → Applications → self-hosted app on that hostname → policy that
+#      allows your team (e.g. emails ending in @yourcompany.com). This is what
+#      substitutes for Helix's lack of built-in auth.
+#
+# cloudflared dials OUT to Cloudflare, so the VM keeps its SSH-only firewall —
+# nothing inbound is exposed.
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
+    depends_on:
+      - caddy
