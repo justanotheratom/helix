@@ -234,6 +234,69 @@ Expect `HTTP/2 302` → `…cloudflareaccess.com/…/login` (the SSO gate), **no
 the Helix UI. Then in a browser, an allowed email gets a one-time code and
 reaches the UI; a non-allowed email is blocked.
 
+### 5e. CLI / programmatic access (service token)
+
+Browser users pass Access via SSO, but the `helix` **CLI** (and any script)
+isn't a browser — it would hit the same 302 gate. To let it through
+non-interactively, create a Cloudflare Access **service token** and a
+**Service Auth** policy on the Helix app; the CLI then sends two headers that
+Access validates at the edge. (The CLI already does this automatically when
+`CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` are set — it's a no-op
+locally.)
+
+**Create the token + policy** (API token needs *Access: Service Tokens · Edit*
+in addition to the earlier scopes; or do both in the dashboard under
+Access → Service Auth):
+
+```
+# create the token — the client_secret is returned ONLY here, capture it
+POST /accounts/{acct}/access/service_tokens   {"name":"helix-cli"}
+  -> result: { id, client_id, client_secret }
+
+# allow that token on the Helix app (coexists with the human email policy)
+POST /accounts/{acct}/access/apps/{app}/policies
+  {"name":"helix-cli-svc","decision":"non_identity",
+   "include":[{"service_token":{"token_id":"<id>"}}]}
+```
+
+(Dashboard equivalent: Access → Service Auth → Create Service Token; then on
+the Helix application add a policy with action **Service Auth** including that
+token.)
+
+**Use it** — from a consumer worktree (the one with `.helix.toml`), point the
+CLI at the remote and supply the token:
+
+```bash
+export HELIX_HOME=~/GitHub/helix
+export HELIX_BASE_URL=https://helix.<yourdomain>
+export CF_ACCESS_CLIENT_ID=<client_id>
+export CF_ACCESS_CLIENT_SECRET=<client_secret>
+
+uv run --project "$HELIX_HOME" helix list
+uv run --project "$HELIX_HOME" helix submit compile <base>/<overlay>/<p>/<v>/compile.config.NNNN.yaml
+uv run --project "$HELIX_HOME" helix status <job-id>   # logs / export ...
+```
+
+`submit` uploads the snapshot + overlay bundle to the **remote** MinIO and the
+**remote** worker runs the job (traced to the remote Langfuse) — i.e. you're
+driving the shared box, not your laptop. Verify quickly:
+
+```bash
+# no token -> 302 (blocked); with token -> 200
+curl -s -o /dev/null -w "%{http_code}\n" https://helix.<yourdomain>/api/jobs
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+  -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+  https://helix.<yourdomain>/api/jobs
+```
+
+> **The service token is a shared credential** — anyone holding the
+> ID/secret can submit jobs to the remote (spending your LLM keys). Store it
+> in a secret manager / `.env`, never in scripts or chat. Rotate via
+> `POST …/service_tokens/{id}/rotate` (or the dashboard) if it leaks. For
+> stronger per-user CLI auth, use `cloudflared access` browser-login instead
+> of a shared token.
+
 ---
 
 ## 6. Day-to-day ops
@@ -254,11 +317,9 @@ tunnel automatically.
 - **Add/remove teammates:** edit the Access policy (dashboard or API).
 - **Reclaim storage:** snapshots + venvs + blobs grow; run `helix gc --apply`
   (or `POST /api/gc?dry_run=false`) periodically.
-- **Submitting jobs:** teammates use the *UI* on the shared box. The `helix`
-  **CLI** pointed at the remote hostname would also hit the Access gate; for
-  programmatic submits, issue a Cloudflare Access **service token** and send
-  the `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers. Most teams
-  just run the CLI against a local Helix and use the shared box for the UI.
+- **Submitting jobs:** teammates use the *UI* on the shared box; for
+  programmatic / CLI submits against the remote, set up a service token — see
+  [§5e](#5e-cli--programmatic-access-service-token).
 
 ## Sizing
 
