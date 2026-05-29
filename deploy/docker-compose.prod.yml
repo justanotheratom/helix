@@ -1,0 +1,23 @@
+# Production / small-host overlay.
+#
+# Layer ON TOP of the base compose (run from the deploy/ dir so the relative
+# clickhouse config path resolves):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env up -d
+#
+# Purpose: make the full stack (incl. Langfuse + ClickHouse) fit a small box
+# such as an 8 GB VM. ClickHouse is the heaviest tenant — cap it (see
+# clickhouse-lowmem.xml) and add container-memory backstops on the steady-state
+# Langfuse services. The Helix compile worker is intentionally left UNCAPPED:
+# it's bursty and we'd rather a compile use swap than get OOM-killed.
+
+services:
+  langfuse-clickhouse:
+    volumes:
+      - ./clickhouse-lowmem.xml:/etc/clickhouse-server/config.d/zz-lowmem.xml:ro
+    mem_limit: 3584m
+
+  langfuse-web:
+    mem_limit: 1024m
+
+  langfuse-worker:
+    mem_limit: 1024m

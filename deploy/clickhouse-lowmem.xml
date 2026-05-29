@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!-- ClickHouse memory caps for small self-hosted boxes (e.g. an 8 GB VM).
+     Mounted into /etc/clickhouse-server/config.d/ by docker-compose.prod.yml.
+     ClickHouse otherwise sizes its caches to total host RAM and will starve
+     the rest of the Helix + Langfuse stack on a small machine. -->
+<clickhouse>
+    <!-- Hard cap on total server memory: 3 GiB. Leaves room for Langfuse
+         web/worker, the Helix services, the compile worker, and the OS on
+         an 8 GB host (with swap as a safety net). Raise on a bigger box. -->
+    <max_server_memory_usage>3221225472</max_server_memory_usage>
+    <!-- Shrink the mark cache (default 5 GiB) to 256 MiB. -->
+    <mark_cache_size>268435456</mark_cache_size>
+</clickhouse>
