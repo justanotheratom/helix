@@ -16,8 +16,17 @@ services:
       - ./clickhouse-lowmem.xml:/etc/clickhouse-server/config.d/zz-lowmem.xml:ro
     mem_limit: 3584m
 
+  # Langfuse web/worker are Node (Next.js). Node auto-caps its V8 heap to a
+  # fraction of the cgroup memory limit, so too-low a mem_limit makes the heap
+  # too small and the process OOMs *itself* ("Reached heap limit") even with
+  # host RAM free. Give them real headroom and pin an explicit heap size that
+  # sits comfortably below the container cap.
   langfuse-web:
-    mem_limit: 1024m
+    mem_limit: 2048m
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=1024"
 
   langfuse-worker:
-    mem_limit: 1024m
+    mem_limit: 1536m
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=896"
