@@ -25,6 +25,11 @@ services:
     mem_limit: 2048m
     environment:
       NODE_OPTIONS: "--max-old-space-size=1024"
+      # Newer langfuse:3 (Next.js standalone) binds to the container hostname,
+      # not loopback — which makes the container's own healthcheck
+      # (fetch 127.0.0.1:3000) fail even though the service is up on the
+      # docker network. Bind to all interfaces so the healthcheck passes.
+      HOSTNAME: "0.0.0.0"
 
   langfuse-worker:
     mem_limit: 1536m
