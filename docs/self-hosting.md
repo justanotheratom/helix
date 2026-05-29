@@ -314,7 +314,9 @@ tunnel automatically.
 
 - **Update Helix:** `cd /opt/helix && git pull && bash deploy/build.sh` then the
   bring-up command above.
-- **Add/remove teammates:** edit the Access policy (dashboard or API).
+- **Add/remove teammates:** edit the Access policy (dashboard or API). For the
+  full teammate onboarding flow (browser + CLI), see
+  [team-access.md](team-access.md).
 - **Reclaim storage:** snapshots + venvs + blobs grow; run `helix gc --apply`
   (or `POST /api/gc?dry_run=false`) periodically.
 - **Submitting jobs:** teammates use the *UI* on the shared box; for
