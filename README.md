@@ -55,6 +55,11 @@ deploy/     docker-compose.yml, build.sh, Caddyfile, .env.example
 
 ## Run the stack from this clone
 
+> Deploying for a **team on a remote VM** (incl. Langfuse, behind SSO, on a
+> small box)? See **[docs/self-hosting.md](docs/self-hosting.md)** — the
+> validated Hetzner + Cloudflare Tunnel path (full stack on an 8 GB VM,
+> ~$16/mo, zero inbound ports).
+
 ```bash
 git clone https://github.com/justanotheratom/helix ~/GitHub/helix
 cd ~/GitHub/helix
