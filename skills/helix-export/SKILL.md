@@ -14,9 +14,12 @@ usually expect.
 
 This skill assumes Helix is already installed. If `$HELIX_HOME` isn't
 set or the Helix repo isn't cloned, **run the `helix-setup` skill first**
-— it's idempotent. The stack doesn't need to be running for `helix export`
-itself, but the job whose artifacts you're materializing must have
-completed.
+— it's idempotent. `helix export` reads job metadata and downloads artifacts
+through the Helix API, so the **API must be reachable** — either the local
+stack is up (`helix status`) or a remote `HELIX_BASE_URL` is configured. The
+job whose artifacts you're materializing must also have completed. (If you
+stopped the stack after an eval, bring it back up before exporting — a chained
+`/be-ai-deploy` will otherwise fail at the export step.)
 
 All `helix …` commands below run from the **consumer worktree** (the dir
 whose `.helix.toml` you want results written under), invoked as:

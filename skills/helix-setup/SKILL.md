@@ -129,6 +129,13 @@ It prompts for `OPENAI_API_KEY`, `GEMINI_API_KEY` (optional),
 writes `$HELIX_HOME/deploy/.env` from the template. Wait for the
 developer to confirm completion before proceeding.
 
+These four are a **starter set**, not the full list. The worker only forwards
+a provider key if it's present in `$HELIX_HOME/deploy/.env`, so **add any other
+provider keys your compile/eval configs reference** (e.g. `CEREBRAS_API_KEY`,
+`GROQ_API_KEY`, `TOGETHER_API_KEY`) before treating the stack as ready — grep
+your configs' `api_key_env:` values to find them. A config that names a key
+missing from `deploy/.env` fails on its first LM call.
+
 A non-interactive alternative is `cp $HELIX_HOME/deploy/.env.example
 $HELIX_HOME/deploy/.env` and editing the keys in place.
 
