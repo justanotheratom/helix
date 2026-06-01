@@ -142,75 +142,73 @@ def resolve_lm_config_references(config: Dict[str, Any], path: str = "") -> None
         config['optimizer_params'] = resolve_value(config['optimizer_params'], 'optimizer_params')
 
 
-def _run_post_compile(
+def _write_deployable(
     *,
     state: Dict[str, Any],
     run_dir: Path,
-    deploy_program: str,
+    source_code: str,
     deploy_class: str,
     config_dict: Dict[str, Any],
+    source_label: str,
 ) -> None:
-    """Transplant the trained wrapper's state into a deploy-shaped class.
+    """Write the single canonical deployable artifact to <run_dir>/compiled_program/.
 
-    DSPy pattern: training compiled a single-LM-call wrapper that exposes
-    inner predictors; the API serves a different class with matching predictor
-    topology. After a successful compile, the caller already has the trained
-    wrapper's recursive dump_state — pass it in here, build a
-    SelfContainedProgram for the deploy class, pickle it, and round-trip-load
-    to confirm.
+    Every compile config declares a `post_compile.mode` (schema-required), and
+    both modes funnel through here:
 
-    Writes:
-      <run_dir>/merged/compiled_program/program.pkl
-      <run_dir>/merged/compiled_program/metadata.json
-      <run_dir>/merged/program.hash
+      identity   - the compiled class is itself deployable; `source_code` /
+                   `deploy_class` are the program's own source + class, so its
+                   trained `state` is written through unchanged.
+      transplant - DSPy pattern where training compiled a single-LM-call
+                   wrapper exposing inner predictors and the API serves a
+                   different class with matching predictor topology;
+                   `source_code` / `deploy_class` are the deploy program's, and
+                   the trained `state` is transplanted into it.
 
-    The deploy class must subclass dspy.Module, share predictor topology with
-    the trained wrapper (so dump_state/load_state transplants cleanly), and
-    accept the same config_dict (or a superset that ignores extras).
+    Either way the result is one `<run_dir>/compiled_program/` (program.pkl +
+    metadata.json) plus a top-level `<run_dir>/program.hash`. There is no
+    `compile/compiled_program` vs `merged/` distinction — deploy always reads
+    `compiled_program/`. The chosen class must subclass dspy.Module, share
+    predictor topology with the trained program (so dump_state/load_state
+    transplants cleanly), and accept the same config_dict.
     """
-    deploy_src = (_base / deploy_program).resolve()
-    if not deploy_src.is_file():
-        raise FileNotFoundError(f"post_compile.deploy_program not found: {deploy_src}")
-    source = deploy_src.read_text()
-    if f"class {deploy_class}" not in source:
-        raise ValueError(
-            f"deploy program {deploy_src} does not define `class {deploy_class}`"
-        )
+    out_dir = run_dir / "compiled_program"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    merged_wrapper = SelfContainedProgram(
-        source_code=source,
+    wrapper = SelfContainedProgram(
+        source_code=source_code,
         class_name=deploy_class,
         config_dict=config_dict,
         state=state,
     )
 
-    merged_dir = run_dir / "merged"
-    out_dir = merged_dir / "compiled_program"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
     # Pickle to bytes once; write the file and hash the same bytes to avoid
     # re-reading the artifact off disk just to compute its digest.
-    pkl_bytes = cloudpickle.dumps(merged_wrapper)
+    pkl_bytes = cloudpickle.dumps(wrapper)
     pkl_path = out_dir / "program.pkl"
     pkl_path.write_bytes(pkl_bytes)
 
     (out_dir / "metadata.json").write_text(json.dumps({
-        "source": "compile.py post_compile",
-        "deploy_program": deploy_program,
+        "source": source_label,
         "class_name": deploy_class,
+        "dependency_versions": {
+            "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+            "dspy": dspy.__version__,
+            "cloudpickle": cloudpickle.__version__,
+        },
     }, indent=2))
 
     digest = hashlib.sha256(pkl_bytes).hexdigest()
-    (merged_dir / "program.hash").write_text(digest)
+    (run_dir / "program.hash").write_text(digest)
 
-    # Round-trip verify: the merged artifact must load back as the deploy class.
-    loaded = load_compiled_program(merged_dir)
+    # Round-trip verify: the artifact must load back as the deploy class.
+    loaded = load_compiled_program(run_dir)
     if loaded.__class__.__name__ != deploy_class:
         raise AssertionError(
             f"post_compile: expected {deploy_class}, got {loaded.__class__.__name__}"
         )
-    print(f"Post-compile transplant: wrote {pkl_path}")
-    print(f"Post-compile transplant: merged program.hash {digest[:12]}…")
+    print(f"Wrote deployable program ({deploy_class}) to {pkl_path}")
+    print(f"program.hash {digest[:12]}…")
 
 
 def main():
@@ -269,7 +267,25 @@ def main():
     # (or we could point to a global schema)
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
-    
+
+    # post_compile is required (see compile.schema.yaml): every config must make
+    # an explicit deploy-shape decision so we never silently ship the wrong
+    # class. Enforce it here since compile.py skips full schema validation.
+    pc = config.get('post_compile')
+    if not isinstance(pc, dict) or pc.get('mode') not in ('identity', 'transplant'):
+        raise ValueError(
+            f"{config_path}: missing/invalid required `post_compile` block. "
+            "Add e.g. `post_compile: {mode: identity}` (deploy the compiled "
+            "class as-is) or `post_compile: {mode: transplant, deploy_program: "
+            "..., deploy_class: ...}` (rebuild a deploy class from the trained "
+            "state)."
+        )
+    if pc['mode'] == 'transplant' and not (pc.get('deploy_program') and pc.get('deploy_class')):
+        raise ValueError(
+            f"{config_path}: post_compile.mode=transplant requires both "
+            "`deploy_program` and `deploy_class`."
+        )
+
     # Resolve lm_config references
     try:
         resolve_lm_config_references(config)
@@ -509,89 +525,63 @@ def main():
         print("No optimizer specified. Skipping compilation and using baseline program...")
         compiled_program = student
     
-    # Save compiled program using SelfContainedProgram wrapper
-    # This embeds source code and config so it can be recreated without module path issues
-    save_path = compile_dir / "compiled_program"
-    save_path.mkdir(exist_ok=True)
+    # Persist the single canonical deployable artifact to
+    # <run_dir>/compiled_program/. Every config declares a post_compile.mode
+    # (schema-required) so the deploy shape is always an explicit decision —
+    # there is no compile/ vs merged/ distinction and no silent fallback that
+    # could ship the wrong class. This is THE deliverable: if we cannot write
+    # it, the compile has failed (let it raise).
     if not hasattr(compiled_program, 'dump_state'):
         raise RuntimeError(
             "Compiled program does not implement dump_state(); "
             "cannot persist optimized instructions."
         )
 
-    # Hoisted so the optional post_compile transplant below can reuse it
-    # without calling dump_state a second time on the (deeply nested) program.
-    state: Dict[str, Any] | None = None
+    state = compiled_program.dump_state(json_mode=False)
+    pc = config['post_compile']
+    mode = pc['mode']
 
-    try:
-        # Read source code from the program module
+    if mode == 'identity':
+        # The compiled class is itself deployable; write its trained state
+        # through unchanged using the program's own source + class.
         module_path = config['program']['module']
         if '-' in module_path or '/' in module_path:
             # Convert module notation to file path for hyphenated dirs
-            file_path_str = module_path.replace('.', '/') + '.py'
-            source_file = Path(_base) / file_path_str
+            source_file = Path(_base) / (module_path.replace('.', '/') + '.py')
         else:
             import importlib.util
             spec = importlib.util.find_spec(module_path)
             source_file = Path(spec.origin) if spec and spec.origin else None
-
-        if source_file and source_file.exists():
-            source_code = source_file.read_text()
-        else:
+        if not (source_file and source_file.exists()):
             raise FileNotFoundError(f"Could not find source file for {module_path}")
-
-        # Get program state (optimized parameters, etc.)
-        state = compiled_program.dump_state(json_mode=False)
-
-        # Create self-contained wrapper
-        wrapper = SelfContainedProgram(
-            source_code=source_code,
-            class_name=config['program']['class'],
-            config_dict=program_args,
-            state=state
-        )
-
-        # Save with cloudpickle
-        pkl_path = save_path / "program.pkl"
-        with open(pkl_path, 'wb') as f:
-            cloudpickle.dump(wrapper, f)
-
-        # Save metadata
-        metadata = {
-            "dependency_versions": {
-                "python": f"{sys.version_info.major}.{sys.version_info.minor}",
-                "dspy": dspy.__version__,
-                "cloudpickle": cloudpickle.__version__
-            }
-        }
-        with open(save_path / "metadata.json", "w") as f:
-            json.dump(metadata, f, indent=2)
-
-        print(f"Saved compiled program to {save_path}")
-    except Exception as e:
-        print(f"Error: Failed to save program: {e}")
-        traceback.print_exc()
-
-    # Optional post-compile state transplant. Built-in: when the consumer's
-    # compile.config declares a `post_compile:` block (deploy_program +
-    # deploy_class — both required per the schema), instantiate a deploy-
-    # shaped class with the trained state and write <run_dir>/merged/.
-    # helix export carries those merged/ artifacts back to disk alongside
-    # compile/ via the worker's upload sweep. Skipped if dump_state failed
-    # above (we couldn't transplant anyway).
-    if config.get('post_compile') and state is not None:
-        pc = config['post_compile']
-        try:
-            _run_post_compile(
-                state=state,
-                run_dir=run_dir,
-                deploy_program=pc['deploy_program'],
-                deploy_class=pc['deploy_class'],
-                config_dict=program_args,
+        source_code = source_file.read_text()
+        deploy_class = config['program']['class']
+        source_label = "compile.py post_compile (identity)"
+    elif mode == 'transplant':
+        # Transplant the trained state into a deploy-shaped class with
+        # matching predictor topology.
+        deploy_program = pc['deploy_program']
+        deploy_class = pc['deploy_class']
+        deploy_src = (_base / deploy_program).resolve()
+        if not deploy_src.is_file():
+            raise FileNotFoundError(f"post_compile.deploy_program not found: {deploy_src}")
+        source_code = deploy_src.read_text()
+        if f"class {deploy_class}" not in source_code:
+            raise ValueError(
+                f"deploy program {deploy_src} does not define `class {deploy_class}`"
             )
-        except Exception as e:
-            print(f"Warning: post_compile transplant failed: {e}")
-            traceback.print_exc()
+        source_label = "compile.py post_compile (transplant)"
+    else:
+        raise ValueError(f"Unknown post_compile.mode: {mode!r}")
+
+    _write_deployable(
+        state=state,
+        run_dir=run_dir,
+        source_code=source_code,
+        deploy_class=deploy_class,
+        config_dict=program_args,
+        source_label=source_label,
+    )
 
     # Print compilation stats
     print("-" * 80)

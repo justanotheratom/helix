@@ -73,9 +73,11 @@ def find_latest_compilation(search_dir: Path) -> Path:
         for fmt in [f"{folder_num:04d}", f"{folder_num:05d}", str(folder_num)]:
             candidate_dir = search_dir / fmt
             if candidate_dir.exists():
-                if (candidate_dir / "compile" / "compiled_program").exists():
-                    return candidate_dir
+                # Canonical: top-level compiled_program/. The compile/ nested
+                # form is read-only back-compat for historical run dirs.
                 if (candidate_dir / "compiled_program").exists():
+                    return candidate_dir
+                if (candidate_dir / "compile" / "compiled_program").exists():
                     return candidate_dir
                 break
 
@@ -96,11 +98,12 @@ def load_compiled_program(
     Returns:
         Loaded DSPy module
     """
-    # Determine directory structure
-    if (compilation_dir / "compile" / "compiled_program").exists():
-        compile_program_dir = compilation_dir / "compile" / "compiled_program"
-    elif (compilation_dir / "compiled_program").exists():
+    # Determine directory structure. Canonical: top-level compiled_program/.
+    # The compile/ nested form is read-only back-compat for historical run dirs.
+    if (compilation_dir / "compiled_program").exists():
         compile_program_dir = compilation_dir / "compiled_program"
+    elif (compilation_dir / "compile" / "compiled_program").exists():
+        compile_program_dir = compilation_dir / "compile" / "compiled_program"
     else:
         raise FileNotFoundError(f"No compiled_program found in {compilation_dir}")
 

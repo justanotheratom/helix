@@ -138,7 +138,11 @@ def _classify(rel: str) -> str:
         return "program_hash"
     if rel.endswith(".yaml") and "/" not in rel:
         return "config"
-    if rel.startswith("compile/compiled_program/program.pkl"):
+    # Canonical: top-level compiled_program/; compile/ nested form is
+    # read-only back-compat for historical run dirs.
+    if rel.startswith("compiled_program/program.pkl") or rel.startswith(
+        "compile/compiled_program/program.pkl"
+    ):
         return "compiled_program"
     if rel.startswith("gepa_logs/"):
         return "gepa_log"

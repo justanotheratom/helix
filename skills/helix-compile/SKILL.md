@@ -39,6 +39,24 @@ Each `<compile-config>` is a path under
 where `<base>` and `<overlay-root>` come from `.helix.toml`. Multi-config
 submission is supported and each job spawns its own auto-eval.
 
+Every compile config **must declare a `post_compile` block** (required) — it
+decides the single canonical deployable artifact written to
+`<results-dir>/compiled_program/`:
+
+```yaml
+post_compile:
+  mode: identity        # the compiled class is itself deployable
+# — or —
+post_compile:
+  mode: transplant      # rebuild a deploy-shaped class from the trained state
+  deploy_program: <base-relative path to program.py>
+  deploy_class: <class name to instantiate for serving>
+```
+
+A config without it fails fast at compile start with a message explaining the
+fix. This removes the old `merged/` vs `compile/` split — deploy always reads
+`compiled_program/`.
+
 ## Prerequisites
 
 The stack must be up:

@@ -40,7 +40,9 @@ the same `results/<export_run_number>/`.
 ```bash
 helix export <eval-job-id>
 # writes <base>/<overlay-root>/<program>/<version>/results/<NNNN>/
-#   compile/   (compiled_program/, gepa_logs/, dataset.jsonl, splits.yaml, …)
+#   compiled_program/   (program.pkl + metadata.json — THE deployable artifact)
+#   compile/            (inputs/provenance: program.py, dataset.jsonl, splits.yaml, …)
+#   gepa_logs/
 #   evals/<NNNN>/
 #   compile.config.<NNNN>.yaml + the stable alias compile.config.yaml
 #   EVAL_SUMMARY.md

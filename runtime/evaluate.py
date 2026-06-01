@@ -280,7 +280,7 @@ def main():
         print(
             "Error: eval.config.yaml must not contain a `program:` block. "
             "The compiled program (class, module, lm_config) is loaded from "
-            "<compilation>/compile/compiled_program/program.pkl. "
+            "<compilation>/compiled_program/program.pkl. "
             "Remove the `program:` section."
         )
         sys.exit(1)
@@ -302,9 +302,9 @@ def main():
     # time). Avoids reading the live program file, which may have drifted.
     try:
         import cloudpickle as _cp
-        _pkl = compilation_dir / "compile" / "compiled_program" / "program.pkl"
+        _pkl = compilation_dir / "compiled_program" / "program.pkl"
         if not _pkl.exists():
-            _pkl = compilation_dir / "compiled_program" / "program.pkl"
+            _pkl = compilation_dir / "compile" / "compiled_program" / "program.pkl"
         if _pkl.exists():
             with open(_pkl, 'rb') as f:
                 _wrap = _cp.load(f)

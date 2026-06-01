@@ -24,7 +24,11 @@ def classify(rel_path: str) -> str:
         return "eval_summary_md"
     if rel_path.endswith(".yaml") and "/" not in rel_path:
         return "config"
-    if rel_path.startswith("compile/compiled_program/program.pkl"):
+    # Canonical: top-level compiled_program/; compile/ nested form is
+    # read-only back-compat for historical run dirs.
+    if rel_path.startswith("compiled_program/program.pkl") or rel_path.startswith(
+        "compile/compiled_program/program.pkl"
+    ):
         return "compiled_program"
     if rel_path.startswith("gepa_logs/"):
         return "gepa_log"

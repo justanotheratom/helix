@@ -298,9 +298,10 @@ def _run_compile(job: dict[str, Any], work_root: str, ctx: dict[str, Any]) -> No
         job_id=job_id,
         attempt=attempt,
         results_dir=results_dir,
-        # merged/ is uploaded when compile.config declares a post_compile block
-        # (compile.py runs the transplant inline after a successful compile).
-        include_prefixes=("compile/", "gepa_logs/", "merged/"),
+        # compiled_program/ is the single canonical deployable artifact
+        # (compile.py's post_compile step writes it for every config); compile/
+        # carries inputs/provenance (config, program.py, splits, dataset).
+        include_prefixes=("compiled_program/", "compile/", "gepa_logs/"),
         include_root_files=(
             "program.hash",
             os.path.basename(config_path),
@@ -782,8 +783,8 @@ def _upload_partial_compile(job_id: uuid.UUID, attempt: int, results_dir: str, l
                 job_id=job_id,
                 attempt=attempt,
                 results_dir=results_dir,
-                include_prefixes=("compile/", "gepa_logs/"),
-                include_root_files=(),
+                include_prefixes=("compiled_program/", "compile/", "gepa_logs/"),
+                include_root_files=("program.hash",),
             )
         except Exception as e:  # noqa: BLE001
             log.warning("partial_compile_upload_failed", error=str(e))

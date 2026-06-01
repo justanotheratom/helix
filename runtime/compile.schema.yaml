@@ -9,6 +9,11 @@ title: "DSPy Program Configuration Schema"
 description: "Schema for configuring DSPy programs, data, and optimizers via YAML"
 type: object
 
+# post_compile is required so every config makes an explicit deploy-shape
+# decision (identity vs transplant); see the post_compile definition below.
+required:
+  - post_compile
+
 # Reusable definitions
 definitions:
   lm_config:
@@ -149,18 +154,35 @@ properties:
   post_compile:
     type: object
     description: |
-      Optional: after a successful compile, transplant the trained wrapper's
-      state into a different (deploy-shaped) class with matching predictor
-      topology. compile.py writes the merged artifact to <run_dir>/merged/
-      and the worker uploads it alongside compile/.
-    required: [deploy_program, deploy_class]
+      Required. Declares how the trained program becomes the single canonical
+      deployable artifact at <run_dir>/compiled_program/ (deploy always reads
+      that dir — there is no compile/ vs merged/ distinction).
+        mode: identity   - the compiled class is itself deployable; its trained
+                           state is written through unchanged.
+        mode: transplant - the trained state is transplanted into a different
+                           (deploy-shaped) class with matching predictor
+                           topology (requires deploy_program + deploy_class).
+      Requiring an explicit mode forces a conscious deploy-shape decision and
+      removes any silent fallback that could ship the wrong class.
+    required: [mode]
     properties:
+      mode:
+        type: string
+        enum: [identity, transplant]
+        description: "identity = deploy the compiled class as-is; transplant = rebuild a deploy class from the trained state."
       deploy_program:
         type: string
-        description: "Base-relative path to the deploy program.py (must define `class <deploy_class>`)."
+        description: "transplant only: base-relative path to the deploy program.py (must define `class <deploy_class>`)."
       deploy_class:
         type: string
-        description: "Name of the deploy class inside deploy_program."
+        description: "transplant only: name of the deploy class inside deploy_program."
+    allOf:
+      - if:
+          properties:
+            mode:
+              const: transplant
+        then:
+          required: [deploy_program, deploy_class]
 
   metadata:
     type: object
