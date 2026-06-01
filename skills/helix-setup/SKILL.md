@@ -145,7 +145,34 @@ Check completion:
 test -f "$HELIX_HOME/deploy/.env" && echo "OK env present"
 ```
 
-## Step 6 — Bring the stack up
+## Step 6 — Choose endpoint: local stack vs shared remote
+
+Helix can run as the developer's **own local stack**, or the CLI can point at a
+**shared remote** Helix (a team box) and skip running a stack entirely. Decide
+which before bringing anything up.
+
+| | Local stack | Shared remote |
+|---|---|---|
+| `HELIX_BASE_URL` | unset → `http://127.0.0.1:<host_port>` (default 7000) | `https://<your-helix-host>` |
+| Auth | none (API is unauthenticated on localhost) | Cloudflare Access service token: `CF_ACCESS_CLIENT_ID` + `CF_ACCESS_CLIENT_SECRET` |
+| Run `helix up` (step 7)? | yes | no — the remote runs jobs |
+
+- **Local** is the default — nothing to set; continue to step 7.
+- **Shared remote** — set `HELIX_BASE_URL` and the two service-token vars, then
+  **skip step 7** (you don't run a stack; submits land on the remote). The CLI
+  sends the `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers
+  automatically when those vars are set, and no-ops them when unset.
+  - You don't self-issue the token — an admin mints a **per-teammate**
+    Cloudflare Access service token; see `team-access.md` §Tier 2 and
+    `self-hosting.md` §5e in the Helix repo for issuance.
+  - **Where to put the vars:** the CLI auto-loads the consumer's
+    **main-worktree-root `.env`** (resolved via `git rev-parse --git-common-dir`,
+    so it's found even from a linked git worktree, which has no `.env` of its
+    own). Put `HELIX_BASE_URL` / `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET`
+    there instead of exporting them — a real shell variable still overrides the
+    file. Keep that `.env` gitignored; it holds a credential.
+
+## Step 7 — Bring the stack up (local only)
 
 First run builds the `helix-api` / `helix-worker` images (one `uv sync`
 inside each, ~5-10 min) and pulls Postgres / MinIO / Redis / Langfuse.
@@ -157,7 +184,7 @@ uv run --project "$HELIX_HOME" helix up
 
 Watch for the line `helix is up → http://127.0.0.1:<port>`.
 
-## Step 7 — Verify
+## Step 8 — Verify
 
 ```bash
 uv run --project "$HELIX_HOME" helix status
@@ -201,7 +228,8 @@ Once setup completes, common follow-ups:
 | 3 uv sync | downloads | `Audited in 0ms` (instant) |
 | 4 helix init | writes `.helix.toml` | refuses (`already exists; pass --force`) |
 | 5 helix bootstrap | writes `.env` | refuses (`already exists; pass --force`) |
-| 6 helix up | builds + ups (slow) | recreates only on config change |
-| 7 verify | shows healthy | shows healthy |
+| 6 choose endpoint | local default / set remote vars | unchanged |
+| 7 helix up (local) | builds + ups (slow) | recreates only on config change |
+| 8 verify | shows healthy | shows healthy |
 
 So running this skill again after a fresh checkout is safe and cheap.
