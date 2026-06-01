@@ -24,10 +24,13 @@ def classify(rel_path: str) -> str:
         return "eval_summary_md"
     if rel_path.endswith(".yaml") and "/" not in rel_path:
         return "config"
-    # Canonical: top-level compiled_program/; compile/ nested form is
+    # compiled_program/ = the trained program (eval artifact); deploy/ = the
+    # post_compile=transplant serving artifact. The compile/ nested form is
     # read-only back-compat for historical run dirs.
-    if rel_path.startswith("compiled_program/program.pkl") or rel_path.startswith(
-        "compile/compiled_program/program.pkl"
+    if (
+        rel_path.startswith("compiled_program/program.pkl")
+        or rel_path.startswith("deploy/compiled_program/program.pkl")
+        or rel_path.startswith("compile/compiled_program/program.pkl")
     ):
         return "compiled_program"
     if rel_path.startswith("gepa_logs/"):

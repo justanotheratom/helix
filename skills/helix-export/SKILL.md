@@ -40,8 +40,9 @@ the same `results/<export_run_number>/`.
 ```bash
 helix export <eval-job-id>
 # writes <base>/<overlay-root>/<program>/<version>/results/<NNNN>/
-#   compiled_program/   (program.pkl + metadata.json — THE deployable artifact)
-#   compile/            (inputs/provenance: program.py, dataset.jsonl, splits.yaml, …)
+#   compiled_program/        (the trained program as compiled — eval artifact)
+#   deploy/compiled_program/  (post_compile=transplant serving artifact; absent for identity)
+#   compile/                 (inputs/provenance: program.py, dataset.jsonl, splits.yaml, …)
 #   gepa_logs/
 #   evals/<NNNN>/
 #   compile.config.<NNNN>.yaml + the stable alias compile.config.yaml
@@ -56,10 +57,11 @@ user — downstream skills/scripts will need it.
 
 ## Common follow-ups
 
-- **Deploy step** (consumer-specific): copy the materialized
-  `compiled_program/` + `program.hash` + `EVAL_SUMMARY.md` into the
-  consumer's serving path. The exact destination and any state-transplant
-  logic is the consumer's deploy concern, not Helix's.
+- **Deploy step** (consumer-specific): copy the **serving** artifact into the
+  consumer's serving path. That's `compiled_program/` when the compile config
+  used `post_compile.mode=identity`, or `deploy/compiled_program/` (+
+  `deploy/program.hash`) when it used `mode=transplant`. The state-transplant
+  itself runs in compile.py; the destination is the consumer's deploy concern.
 - **Inspect on disk**: open `results/<NNNN>/EVAL_SUMMARY.md` for the
   headline metrics, `compile/compile.config.yaml` for the exact compile
   inputs, and `evals/<NNNN>/results.jsonl` for per-row eval rows.

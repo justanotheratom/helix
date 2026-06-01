@@ -298,10 +298,11 @@ def _run_compile(job: dict[str, Any], work_root: str, ctx: dict[str, Any]) -> No
         job_id=job_id,
         attempt=attempt,
         results_dir=results_dir,
-        # compiled_program/ is the single canonical deployable artifact
-        # (compile.py's post_compile step writes it for every config); compile/
-        # carries inputs/provenance (config, program.py, splits, dataset).
-        include_prefixes=("compiled_program/", "compile/", "gepa_logs/"),
+        # compiled_program/ = the trained program as compiled (eval artifact +
+        # source of truth). deploy/ = the post_compile=transplant serving
+        # artifact (absent for identity mode). compile/ carries inputs/
+        # provenance (config, program.py, splits, dataset).
+        include_prefixes=("compiled_program/", "deploy/", "compile/", "gepa_logs/"),
         include_root_files=(
             "program.hash",
             os.path.basename(config_path),
@@ -783,7 +784,7 @@ def _upload_partial_compile(job_id: uuid.UUID, attempt: int, results_dir: str, l
                 job_id=job_id,
                 attempt=attempt,
                 results_dir=results_dir,
-                include_prefixes=("compiled_program/", "compile/", "gepa_logs/"),
+                include_prefixes=("compiled_program/", "deploy/", "compile/", "gepa_logs/"),
                 include_root_files=("program.hash",),
             )
         except Exception as e:  # noqa: BLE001

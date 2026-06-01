@@ -138,10 +138,13 @@ def _classify(rel: str) -> str:
         return "program_hash"
     if rel.endswith(".yaml") and "/" not in rel:
         return "config"
-    # Canonical: top-level compiled_program/; compile/ nested form is
+    # compiled_program/ = the trained program (eval artifact); deploy/ = the
+    # post_compile=transplant serving artifact. The compile/ nested form is
     # read-only back-compat for historical run dirs.
-    if rel.startswith("compiled_program/program.pkl") or rel.startswith(
-        "compile/compiled_program/program.pkl"
+    if (
+        rel.startswith("compiled_program/program.pkl")
+        or rel.startswith("deploy/compiled_program/program.pkl")
+        or rel.startswith("compile/compiled_program/program.pkl")
     ):
         return "compiled_program"
     if rel.startswith("gepa_logs/"):

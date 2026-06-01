@@ -154,16 +154,22 @@ properties:
   post_compile:
     type: object
     description: |
-      Required. Declares how the trained program becomes the single canonical
-      deployable artifact at <run_dir>/compiled_program/ (deploy always reads
-      that dir — there is no compile/ vs merged/ distinction).
-        mode: identity   - the compiled class is itself deployable; its trained
-                           state is written through unchanged.
-        mode: transplant - the trained state is transplanted into a different
+      Required. Declares how the trained program becomes the DEPLOY artifact.
+      compile.py always writes the trained program as compiled to
+      <run_dir>/compiled_program/ (the eval artifact + source of truth — the
+      eval config's program_inputs + metric target this class). post_compile
+      then decides the serving artifact:
+        mode: identity   - the compiled class is itself deployable; the deploy
+                           artifact IS <run_dir>/compiled_program/.
+        mode: transplant - transplant the trained state into a different
                            (deploy-shaped) class with matching predictor
-                           topology (requires deploy_program + deploy_class).
+                           topology, written to <run_dir>/deploy/compiled_program/
+                           (requires deploy_program + deploy_class). Kept
+                           separate from the eval artifact because eval and
+                           serving consume different classes.
       Requiring an explicit mode forces a conscious deploy-shape decision and
-      removes any silent fallback that could ship the wrong class.
+      lets the deploy step hard-fail (rather than ship the wrong class) when a
+      transplant artifact is expected but missing.
     required: [mode]
     properties:
       mode:

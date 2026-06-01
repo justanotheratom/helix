@@ -142,42 +142,38 @@ def resolve_lm_config_references(config: Dict[str, Any], path: str = "") -> None
         config['optimizer_params'] = resolve_value(config['optimizer_params'], 'optimizer_params')
 
 
-def _write_deployable(
+def _write_program_artifact(
     *,
     state: Dict[str, Any],
-    run_dir: Path,
+    dest_root: Path,
     source_code: str,
-    deploy_class: str,
+    class_name: str,
     config_dict: Dict[str, Any],
     source_label: str,
 ) -> None:
-    """Write the single canonical deployable artifact to <run_dir>/compiled_program/.
+    """Write a SelfContainedProgram artifact to <dest_root>/compiled_program/.
 
-    Every compile config declares a `post_compile.mode` (schema-required), and
-    both modes funnel through here:
+    Used for both artifacts a compile can produce:
 
-      identity   - the compiled class is itself deployable; `source_code` /
-                   `deploy_class` are the program's own source + class, so its
-                   trained `state` is written through unchanged.
-      transplant - DSPy pattern where training compiled a single-LM-call
-                   wrapper exposing inner predictors and the API serves a
-                   different class with matching predictor topology;
-                   `source_code` / `deploy_class` are the deploy program's, and
-                   the trained `state` is transplanted into it.
+      dest_root = <run_dir>        - the trained program AS COMPILED (the class
+                                     GEPA optimized). This is the eval artifact
+                                     and source of truth: the eval config's
+                                     program_inputs + metric target this class.
+      dest_root = <run_dir>/deploy - the post_compile=transplant output: the
+                                     trained `state` transplanted into a
+                                     deploy-shaped class with matching predictor
+                                     topology, which the API serves.
 
-    Either way the result is one `<run_dir>/compiled_program/` (program.pkl +
-    metadata.json) plus a top-level `<run_dir>/program.hash`. There is no
-    `compile/compiled_program` vs `merged/` distinction — deploy always reads
-    `compiled_program/`. The chosen class must subclass dspy.Module, share
-    predictor topology with the trained program (so dump_state/load_state
-    transplants cleanly), and accept the same config_dict.
+    Writes <dest_root>/compiled_program/{program.pkl,metadata.json} and
+    <dest_root>/program.hash, then round-trip-loads to confirm the class. The
+    class must subclass dspy.Module and accept `config_dict`.
     """
-    out_dir = run_dir / "compiled_program"
+    out_dir = dest_root / "compiled_program"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     wrapper = SelfContainedProgram(
         source_code=source_code,
-        class_name=deploy_class,
+        class_name=class_name,
         config_dict=config_dict,
         state=state,
     )
@@ -190,7 +186,7 @@ def _write_deployable(
 
     (out_dir / "metadata.json").write_text(json.dumps({
         "source": source_label,
-        "class_name": deploy_class,
+        "class_name": class_name,
         "dependency_versions": {
             "python": f"{sys.version_info.major}.{sys.version_info.minor}",
             "dspy": dspy.__version__,
@@ -199,15 +195,15 @@ def _write_deployable(
     }, indent=2))
 
     digest = hashlib.sha256(pkl_bytes).hexdigest()
-    (run_dir / "program.hash").write_text(digest)
+    (dest_root / "program.hash").write_text(digest)
 
-    # Round-trip verify: the artifact must load back as the deploy class.
-    loaded = load_compiled_program(run_dir)
-    if loaded.__class__.__name__ != deploy_class:
+    # Round-trip verify: the artifact must load back as the expected class.
+    loaded = load_compiled_program(dest_root)
+    if loaded.__class__.__name__ != class_name:
         raise AssertionError(
-            f"post_compile: expected {deploy_class}, got {loaded.__class__.__name__}"
+            f"expected {class_name}, got {loaded.__class__.__name__}"
         )
-    print(f"Wrote deployable program ({deploy_class}) to {pkl_path}")
+    print(f"Wrote program artifact ({class_name}) to {pkl_path}")
     print(f"program.hash {digest[:12]}…")
 
 
@@ -525,12 +521,6 @@ def main():
         print("No optimizer specified. Skipping compilation and using baseline program...")
         compiled_program = student
     
-    # Persist the single canonical deployable artifact to
-    # <run_dir>/compiled_program/. Every config declares a post_compile.mode
-    # (schema-required) so the deploy shape is always an explicit decision —
-    # there is no compile/ vs merged/ distinction and no silent fallback that
-    # could ship the wrong class. This is THE deliverable: if we cannot write
-    # it, the compile has failed (let it raise).
     if not hasattr(compiled_program, 'dump_state'):
         raise RuntimeError(
             "Compiled program does not implement dump_state(); "
@@ -538,50 +528,65 @@ def main():
         )
 
     state = compiled_program.dump_state(json_mode=False)
+
+    # 1) Always persist the trained program AS COMPILED to
+    #    <run_dir>/compiled_program/. This is the eval artifact + source of
+    #    truth: the eval config's program_inputs and metric target the compiled
+    #    class, so eval MUST load this — not a transplanted deploy class.
+    module_path = config['program']['module']
+    if '-' in module_path or '/' in module_path:
+        # Convert module notation to file path for hyphenated dirs
+        source_file = Path(_base) / (module_path.replace('.', '/') + '.py')
+    else:
+        import importlib.util
+        spec = importlib.util.find_spec(module_path)
+        source_file = Path(spec.origin) if spec and spec.origin else None
+    if not (source_file and source_file.exists()):
+        raise FileNotFoundError(f"Could not find source file for {module_path}")
+    _write_program_artifact(
+        state=state,
+        dest_root=run_dir,
+        source_code=source_file.read_text(),
+        class_name=config['program']['class'],
+        config_dict=program_args,
+        source_label="compile.py compiled program",
+    )
+
+    # 2) Produce the DEPLOY artifact per the required post_compile.mode.
+    #    identity   -> the compiled class is itself deployable; the deploy
+    #                  artifact IS <run_dir>/compiled_program/ (nothing extra).
+    #    transplant -> transplant the trained state into a deploy-shaped class
+    #                  with matching predictor topology, written to a SEPARATE
+    #                  <run_dir>/deploy/compiled_program/. Kept distinct from the
+    #                  eval artifact above because eval and serving consume
+    #                  different classes. Deploy reads this; it hard-fails if the
+    #                  config says transplant but this artifact is absent.
     pc = config['post_compile']
     mode = pc['mode']
-
     if mode == 'identity':
-        # The compiled class is itself deployable; write its trained state
-        # through unchanged using the program's own source + class.
-        module_path = config['program']['module']
-        if '-' in module_path or '/' in module_path:
-            # Convert module notation to file path for hyphenated dirs
-            source_file = Path(_base) / (module_path.replace('.', '/') + '.py')
-        else:
-            import importlib.util
-            spec = importlib.util.find_spec(module_path)
-            source_file = Path(spec.origin) if spec and spec.origin else None
-        if not (source_file and source_file.exists()):
-            raise FileNotFoundError(f"Could not find source file for {module_path}")
-        source_code = source_file.read_text()
-        deploy_class = config['program']['class']
-        source_label = "compile.py post_compile (identity)"
+        print("Deploy artifact = compiled_program/ (post_compile mode=identity)")
     elif mode == 'transplant':
-        # Transplant the trained state into a deploy-shaped class with
-        # matching predictor topology.
         deploy_program = pc['deploy_program']
         deploy_class = pc['deploy_class']
         deploy_src = (_base / deploy_program).resolve()
         if not deploy_src.is_file():
             raise FileNotFoundError(f"post_compile.deploy_program not found: {deploy_src}")
-        source_code = deploy_src.read_text()
-        if f"class {deploy_class}" not in source_code:
+        deploy_source = deploy_src.read_text()
+        if f"class {deploy_class}" not in deploy_source:
             raise ValueError(
                 f"deploy program {deploy_src} does not define `class {deploy_class}`"
             )
-        source_label = "compile.py post_compile (transplant)"
+        _write_program_artifact(
+            state=state,
+            dest_root=run_dir / "deploy",
+            source_code=deploy_source,
+            class_name=deploy_class,
+            config_dict=program_args,
+            source_label="compile.py post_compile (transplant)",
+        )
+        print("Deploy artifact = deploy/compiled_program/ (post_compile mode=transplant)")
     else:
         raise ValueError(f"Unknown post_compile.mode: {mode!r}")
-
-    _write_deployable(
-        state=state,
-        run_dir=run_dir,
-        source_code=source_code,
-        deploy_class=deploy_class,
-        config_dict=program_args,
-        source_label=source_label,
-    )
 
     # Print compilation stats
     print("-" * 80)
