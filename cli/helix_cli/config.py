@@ -14,6 +14,62 @@ from functools import cache
 from pathlib import Path
 
 
+def _main_worktree_root() -> Path | None:
+    """The MAIN working tree's root (not a linked worktree's).
+
+    Secrets/config (HELIX_BASE_URL, CF_ACCESS_* …) are kept in the consumer's
+    root `.env`, which lives in the primary checkout — git worktrees don't carry
+    their own copy. `--git-common-dir` always points at the shared `<main>/.git`
+    regardless of which worktree we're invoked from, so its parent is the main
+    root. Best-effort: returns None outside a git repo.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+    except Exception:
+        return None
+    if not out:
+        return None
+    common = Path(out)
+    if not common.is_absolute():
+        common = Path.cwd() / common
+    common = common.resolve()
+    return common.parent if common.name == ".git" else None
+
+
+def _load_dotenv(path: Path) -> None:
+    """Minimal `.env` loader (KEY=VALUE lines). Does NOT override variables
+    already set in the real environment, so an explicit `export` always wins.
+    Silent and best-effort — never crashes the CLI."""
+    try:
+        text = path.read_text()
+    except Exception:
+        return
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        if key.startswith("export "):
+            key = key[len("export "):].strip()
+        val = val.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+def _bootstrap_env() -> None:
+    """Load the consumer's main-worktree-root `.env` into the environment so the
+    CLI picks up HELIX_BASE_URL / CF_ACCESS_* without a manual `source`."""
+    root = _main_worktree_root()
+    if root is not None:
+        _load_dotenv(root / ".env")
+
+
+_bootstrap_env()  # must run before HELIX_BASE_URL is read below
+
 HELIX_BASE_URL = os.environ.get("HELIX_BASE_URL", "http://127.0.0.1:7000")
 HELIX_API_BASE = f"{HELIX_BASE_URL}/api"
 

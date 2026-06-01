@@ -83,6 +83,13 @@ worker runs the job. So everyone's submits land on the same shared box.
 > automatically when those env vars are set (and no-ops them when unset, i.e.
 > for local use). See [self-hosting.md §5e](self-hosting.md#5e-cli--programmatic-access-service-token)
 > for how the service token + Service Auth policy are created.
+>
+> Prefer a file over `~/.zshrc`? The CLI also **auto-loads the consumer's
+> main-worktree-root `.env`** (resolved via `git rev-parse --git-common-dir`,
+> so it works from linked git worktrees too) — put `HELIX_BASE_URL` /
+> `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` there instead of exporting
+> them. Real shell variables still override the `.env`. Keep that file
+> gitignored — it holds a credential.
 
 ### Admin: per-teammate service tokens (recommended)
 
