@@ -13,7 +13,7 @@ import yaml
 from rich.console import Console
 
 from . import api, bundle
-from .config import repo_root
+from .config import job_traces_url, job_ui_url, repo_root
 from .infer import infer_all, infer_program_version, infer_dataset_split
 
 
@@ -101,9 +101,10 @@ def cmd_submit_compile(args: argparse.Namespace) -> int:
     }
     results = api.submit_compile(metadata, bundle_bytes)
     for r in results:
+        job_id = r["job_id"]
         console.print(
-            f"[green]submitted[/green] {r['job_id']}  label={r['run_label']}  "
-            f"ui={r['ui_url']}  traces={r['traces_url']}"
+            f"[green]submitted[/green] {job_id}  label={r['run_label']}  "
+            f"ui={job_ui_url(job_id)}  traces={job_traces_url(job_id)}"
         )
     return 0
 
@@ -140,9 +141,10 @@ def cmd_submit_eval(args: argparse.Namespace) -> int:
     }
     results = api.submit_eval(metadata, bundle_bytes)
     for r in results:
+        job_id = r["job_id"]
         console.print(
-            f"[green]submitted[/green] {r['job_id']}  label={r['run_label']}  "
-            f"ui={r['ui_url']}  traces={r['traces_url']}"
+            f"[green]submitted[/green] {job_id}  label={r['run_label']}  "
+            f"ui={job_ui_url(job_id)}  traces={job_traces_url(job_id)}"
         )
     return 0
 

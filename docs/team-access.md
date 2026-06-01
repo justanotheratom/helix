@@ -114,6 +114,22 @@ committed file.**
 To revoke a teammate's CLI access later: delete their service token
 (`DELETE …/access/service_tokens/{id}`) or remove it from the policy.
 
+### Admin: correct job URLs in API responses
+
+The API builds each job's `ui_url` / `traces_url` from **`HELIX_PUBLIC_BASE_URL`**
+on `helix-api`. The base compose defaults that to `http://127.0.0.1:7000`, which
+is wrong on a tunnel deploy.
+
+When using `docker-compose.cloudflare.yml`, set in `deploy/.env`:
+
+```bash
+HELIX_PUBLIC_BASE_URL=https://helix.<yourdomain>
+```
+
+The cloudflare overlay passes it through to `helix-api`. Restart the stack after
+changing it. The CLI also prints links from the teammate's **`HELIX_BASE_URL`**
+(so submit output is correct even before this server fix).
+
 ---
 
 ## Security notes

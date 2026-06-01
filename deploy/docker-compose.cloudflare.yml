@@ -18,6 +18,12 @@
 # nothing inbound is exposed.
 
 services:
+  # Job ui_url / traces_url in API responses use HELIX_PUBLIC_BASE_URL. Without
+  # this override the base compose default (127.0.0.1) leaks into submit output.
+  helix-api:
+    environment:
+      HELIX_PUBLIC_BASE_URL: ${HELIX_PUBLIC_BASE_URL:-https://helix.buildwithhelix.xyz}
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     restart: unless-stopped

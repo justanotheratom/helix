@@ -77,8 +77,10 @@ If `helix status` shows services aren't running, start the stack first.
 helix submit compile <base>/<overlay-root>/<program>/<version>/compile.config.<NNNN>.yaml
 ```
 
-The CLI prints `{job_id, run_label, ui_url, traces_url}` for each submitted
-job. **Always paste both URLs into chat** so the user can follow along.
+The CLI prints `{job_id, run_label, ui, traces}` for each submitted job, using
+**`HELIX_BASE_URL`** (not the API's `ui_url`, which may still say `127.0.0.1`
+on tunnel deploys until `HELIX_PUBLIC_BASE_URL` is set on the server). **Always
+paste both links into chat** so the user can follow along.
 
 - **Auto-eval chaining** is on by default. Helix looks for
   `eval.config.<dataset>_<split>-test.yaml` next to the compile config and

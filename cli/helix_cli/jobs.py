@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import api
-from .config import HELIX_BASE_URL
+from .config import HELIX_BASE_URL, job_traces_url, job_ui_url
 
 
 console = Console()
@@ -61,15 +61,14 @@ def cmd_cancel(args: argparse.Namespace) -> int:
 
 
 def cmd_open(args: argparse.Namespace) -> int:
-    url = HELIX_BASE_URL if not args.job_id else f"{HELIX_BASE_URL}/jobs/{args.job_id}"
+    url = HELIX_BASE_URL if not args.job_id else job_ui_url(args.job_id)
     webbrowser.open(url)
     console.print(f"opened {url}")
     return 0
 
 
 def cmd_traces(args: argparse.Namespace) -> int:
-    job = api.get_job(args.job_id)
-    url = job["traces_url"]
+    url = job_traces_url(args.job_id)
     webbrowser.open(url)
     console.print(f"opened {url}")
     return 0

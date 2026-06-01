@@ -74,6 +74,16 @@ HELIX_BASE_URL = os.environ.get("HELIX_BASE_URL", "http://127.0.0.1:7000")
 HELIX_API_BASE = f"{HELIX_BASE_URL}/api"
 
 
+def job_ui_url(job_id: str) -> str:
+    """Canonical job UI link for this CLI session (uses HELIX_BASE_URL)."""
+    return f"{HELIX_BASE_URL.rstrip('/')}/jobs/{job_id}"
+
+
+def job_traces_url(job_id: str) -> str:
+    """Canonical trace viewer link for this CLI session."""
+    return f"{HELIX_BASE_URL.rstrip('/')}/jobs/{job_id}/traces"
+
+
 def access_headers() -> dict[str, str]:
     """Cloudflare Access service-token headers, for talking to a Helix that
     sits behind Cloudflare Access (a remote/team deployment). Set both
