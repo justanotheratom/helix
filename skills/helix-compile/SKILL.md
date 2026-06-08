@@ -61,6 +61,10 @@ wrapper vs a multi-step serving agent), so the two artifacts are kept separate:
 eval reads `compiled_program/`; the deploy step reads `compiled_program/` for
 identity or `deploy/compiled_program/` for transplant.
 
+When a compile uses data, `data.program_inputs` is required and must list the
+fields passed to the DSPy program. There is no program-specific default input
+field; scalar records under `data.input_key` map to the single declared input.
+
 ## Prerequisites
 
 The stack must be up:

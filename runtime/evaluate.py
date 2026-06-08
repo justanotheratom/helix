@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 from llm_pricing import calculate_cost
 from config_utils import inject_config_to_env
 from tracking import LatencyTracker, aggregate_usage, calculate_cost_from_usage
-from compile import convert_value_with_images
+from compile import convert_raw_data_to_examples, resolve_program_inputs
 from program_loader import find_latest_compilation, load_compiled_program
 from module_loader import load_object
 from data_loader import load_from_manifest
@@ -288,7 +288,7 @@ def main():
     # Save metrics.py to eval directory
     try:
         metric_module = config['metric']['module']
-        # Convert module path to file path (e.g., "programs.food-notes-summarizer.01.metrics" -> "programs/food-notes-summarizer/01/metrics.py")
+        # Convert a module path to its source file path.
         metric_file_path = metric_module.replace('.', '/') + '.py'
         metric_source = Path(_base) / metric_file_path
         if metric_source.exists():
@@ -395,41 +395,15 @@ def main():
     print(f"Loaded {len(raw_data)} examples")
 
     # Convert to DSPy Examples
-    program_inputs = data_config.get('program_inputs', ['dietary_preference'])
+    program_inputs = resolve_program_inputs(data_config)
     
     # Get image config for converting image paths (from compile config if available)
     image_config = data_config.get('image_config', {})
     convert_images = data_config.get('convert_images', True)
 
-    dataset = []
-    for item in raw_data:
-        ex_data = {}
-        
-        # Flatten input dict if program_inputs reference nested fields
-        input_dict = item.get('input', {})
-        if isinstance(input_dict, dict):
-            for field in program_inputs:
-                if field in input_dict:
-                    val = input_dict[field]
-                    if convert_images:
-                        val = convert_value_with_images(val, config_path.parent, image_config)
-                    ex_data[field] = val
-        
-        # Keep the output
-        ex_data['output'] = item.get('output', {})
-        
-        # Legacy support for preference-validator format (where input is a simple value)
-        if not any(field in ex_data for field in program_inputs):
-            for k, v in item.items():
-                if convert_images and k in ('input',):
-                    ex_data[k] = convert_value_with_images(v, config_path.parent, image_config)
-                else:
-                    ex_data[k] = v
-            if 'dietary_preference' not in ex_data and 'input' in ex_data:
-                ex_data['dietary_preference'] = ex_data['input']
-        
-        ex = dspy.Example(**ex_data).with_inputs(*program_inputs)
-        dataset.append(ex)
+    dataset = convert_raw_data_to_examples(
+        raw_data, data_config, config_path.parent, image_config, convert_images
+    )
 
     print(f"Loaded {len(dataset)} examples.")
 
