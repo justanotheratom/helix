@@ -96,6 +96,71 @@ def convert_value_with_images(
         return value
 
 
+def resolve_program_inputs(data_config: Dict[str, Any]) -> List[str]:
+    """Return the declared program input fields for a data config."""
+    program_inputs = data_config.get('program_inputs')
+    if (
+        not isinstance(program_inputs, list)
+        or not program_inputs
+        or not all(isinstance(field, str) and field for field in program_inputs)
+    ):
+        raise ValueError(
+            "data.program_inputs must be a non-empty list of field names. "
+            "Helix does not assume a program-specific default input field."
+        )
+    return program_inputs
+
+
+def convert_raw_data_to_examples(
+    raw_data: List[Dict[str, Any]],
+    data_config: Dict[str, Any],
+    config_base_dir: Path,
+    image_config: Dict[str, Any] = None,
+    convert_images: bool = True,
+) -> List[dspy.Example]:
+    """Convert raw JSONL records to DSPy Examples using generic data keys."""
+    program_inputs = resolve_program_inputs(data_config)
+    input_key = data_config.get('input_key', 'input')
+    output_key = data_config.get('output_key', 'output')
+
+    examples = []
+    for idx, item in enumerate(raw_data):
+        if not isinstance(item, dict):
+            raise ValueError(f"Example {idx} must be a JSON object, got {type(item).__name__}")
+
+        ex_data = {}
+
+        def maybe_convert(value: Any) -> Any:
+            if not convert_images:
+                return value
+            return convert_value_with_images(value, config_base_dir, image_config)
+
+        input_value = item.get(input_key)
+        if isinstance(input_value, dict):
+            for field in program_inputs:
+                if field in input_value:
+                    ex_data[field] = maybe_convert(input_value[field])
+        elif input_key in item and len(program_inputs) == 1:
+            ex_data[program_inputs[0]] = maybe_convert(input_value)
+
+        for field in program_inputs:
+            if field not in ex_data and field in item:
+                ex_data[field] = maybe_convert(item[field])
+
+        missing = [field for field in program_inputs if field not in ex_data]
+        if missing:
+            raise ValueError(
+                f"Example {idx} missing declared program input(s): {missing}. "
+                f"Put them under `{input_key}`, as top-level fields, or use a "
+                f"scalar `{input_key}` with exactly one program input."
+            )
+
+        ex_data['output'] = item.get(output_key, {})
+        examples.append(dspy.Example(**ex_data).with_inputs(*program_inputs))
+
+    return examples
+
+
 def resolve_lm_config_references(config: Dict[str, Any], path: str = "") -> None:
     """
     Recursively resolve string references to lm_configs throughout the config.
@@ -442,47 +507,16 @@ def main():
         raw_val_data = load_from_manifest(splits_path, 'val')
         print(f"Loaded {len(raw_train_data)} train, {len(raw_val_data)} val examples")
 
-        # Convert to DSPy Examples
-        program_inputs = data_config.get('program_inputs', ['dietary_preference'])
-
         # Get image config for converting image paths
         image_config = config.get('program', {}).get('args', {}).get('image_config', {})
         convert_images = data_config.get('convert_images', True)
 
-        def convert_to_examples(raw_data):
-            examples = []
-            for item in raw_data:
-                ex_data = {}
-
-                # Flatten input dict if program_inputs reference nested fields
-                input_dict = item.get('input', {})
-                if isinstance(input_dict, dict):
-                    for field in program_inputs:
-                        if field in input_dict:
-                            val = input_dict[field]
-                            if convert_images:
-                                val = convert_value_with_images(val, config_base_dir, image_config)
-                            ex_data[field] = val
-
-                # Keep the output
-                ex_data['output'] = item.get('output', {})
-
-                # Legacy support for preference-validator format (where input is a simple value)
-                if not any(field in ex_data for field in program_inputs):
-                    for k, v in item.items():
-                        if convert_images and k in ('input',):
-                            ex_data[k] = convert_value_with_images(v, config_base_dir, image_config)
-                        else:
-                            ex_data[k] = v
-                    if 'dietary_preference' not in ex_data and 'input' in ex_data:
-                        ex_data['dietary_preference'] = ex_data['input']
-
-                ex = dspy.Example(**ex_data).with_inputs(*program_inputs)
-                examples.append(ex)
-            return examples
-
-        trainset = convert_to_examples(raw_train_data)
-        valset = convert_to_examples(raw_val_data)
+        trainset = convert_raw_data_to_examples(
+            raw_train_data, data_config, config_base_dir, image_config, convert_images
+        )
+        valset = convert_raw_data_to_examples(
+            raw_val_data, data_config, config_base_dir, image_config, convert_images
+        )
 
         print(f"Loaded {len(trainset)} training examples, {len(valset)} validation examples.")
 
@@ -598,7 +632,8 @@ def main():
     print("-" * 80)
 
     print(f"\nCompilation complete. Run evaluate.py to test the compiled program.")
-    print(f"  uv run python3 .claude/skills/ai-utils/evaluate.py --config <eval.config.yaml> --compilation {run_dir}")
+    eval_entrypoint = Path(__file__).with_name("evaluate.py")
+    print(f"  uv run python {eval_entrypoint} --config <eval.config.yaml> --compilation {run_dir}")
     
     # Flush traces
     if langfuse_client:
