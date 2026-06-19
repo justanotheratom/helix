@@ -6,7 +6,6 @@ from typing import Any, TypeVar
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
 
 T = TypeVar("T", bound="WorkerHeartbeat")
 
@@ -51,7 +50,7 @@ class WorkerHeartbeat:
 
         baked_sha = d.pop("baked_sha")
 
-        last_seen = isoparse(d.pop("last_seen"))
+        last_seen = datetime.datetime.fromisoformat(d.pop("last_seen"))
 
         worker_heartbeat = cls(
             worker_id=worker_id,

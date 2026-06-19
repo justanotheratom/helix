@@ -4,13 +4,14 @@ from __future__ import annotations
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from . import settings
 from .db import engine
 
 
 def claim_next_job() -> dict[str, Any] | None:
-    """Claim the oldest queued job that carries a content-addressed snapshot.
+    """Claim the oldest queued job for a user with no running job.
 
     No baked_sha fence anymore: any worker can claim any repo's job. After
     claiming, the worker materializes the job's snapshot and checks runtime
@@ -20,6 +21,10 @@ def claim_next_job() -> dict[str, Any] | None:
     `blocked` rows are excluded by `status='queued'`. A queued job must have
     a snapshot_id to run in snapshot mode — those without are swept by
     fail_stale_queued_jobs.
+
+    The matching migration adds a partial unique index on (user_id) for
+    running jobs. That index is the race-proof guard when multiple workers try
+    to claim queued jobs for the same user at the same time.
     """
     sql = text(
         """
@@ -30,27 +35,35 @@ def claim_next_job() -> dict[str, Any] | None:
             lease_expires_at=now() + CAST(:lease || ' seconds' AS interval),
             attempt=attempt + 1
         WHERE id = (
-          SELECT id FROM jobs
-          WHERE status='queued'
-            AND cancel_requested = false
-            AND snapshot_id IS NOT NULL
-          ORDER BY created_at
+          SELECT q.id FROM jobs q
+          WHERE q.status='queued'
+            AND q.cancel_requested = false
+            AND q.snapshot_id IS NOT NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM jobs r
+              WHERE r.status='running'
+                AND r.user_id = q.user_id
+            )
+          ORDER BY q.created_at
           FOR UPDATE SKIP LOCKED
           LIMIT 1
         )
         RETURNING id, type, status, repo_id, program_version_id, dataset_id, split_id,
                   parent_job_id, config_path, bundle_blob_key,
-                  snapshot_id, helix_runtime_version, run_label, attempt, summary
+                  snapshot_id, helix_runtime_version, run_label, attempt, summary, user_id
         """
     )
-    with engine.begin() as conn:
-        row = conn.execute(
-            sql,
-            {
-                "wid": settings.WORKER_ID,
-                "lease": str(settings.LEASE_DURATION_S),
-            },
-        ).mappings().first()
+    try:
+        with engine.begin() as conn:
+            row = conn.execute(
+                sql,
+                {
+                    "wid": settings.WORKER_ID,
+                    "lease": str(settings.LEASE_DURATION_S),
+                },
+            ).mappings().first()
+    except IntegrityError:
+        return None
     return dict(row) if row else None
 
 

@@ -8,6 +8,7 @@ In the legacy monorepo layout (consumer/helix/...) both still resolve.
 """
 from __future__ import annotations
 
+import getpass
 import os
 import subprocess
 from functools import cache
@@ -94,6 +95,15 @@ def access_headers() -> dict[str, str]:
     if cid and secret:
         return {"CF-Access-Client-Id": cid, "CF-Access-Client-Secret": secret}
     return {}
+
+
+def user_id() -> str:
+    """Stable queue-serialization identity for CLI submissions."""
+    explicit = os.environ.get("HELIX_USER_ID")
+    if explicit and explicit.strip():
+        return explicit.strip()
+    explicit = os.environ.get("USER") or os.environ.get("USERNAME") or getpass.getuser()
+    return (explicit or "anonymous").strip() or "anonymous"
 
 
 @cache

@@ -12,10 +12,11 @@ import uuid
 from functools import lru_cache
 from typing import List
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, UploadFile
 from sqlalchemy import desc, select
 
 from .. import blob, db, dispatch, redis_bus, schemas
+from ..identity import submission_user_id
 from ..langfuse_link import traces_url
 from ..serialize import job_to_schema
 from ..settings import settings
@@ -40,8 +41,10 @@ def _store_bundle(key_prefix: str, bundle: UploadFile | None) -> str | None:
 async def submit_compile(
     metadata: str = Form(..., description="JSON CompileSubmissionMetadata"),
     bundle: UploadFile | None = File(default=None),
+    cf_access_client_id: str | None = Header(default=None, alias="CF-Access-Client-Id"),
 ) -> List[schemas.JobSubmissionResult]:
     meta = schemas.CompileSubmissionMetadata.model_validate_json(metadata)
+    user_id = submission_user_id(meta.user_id, cf_access_client_id)
     bundle_key = _store_bundle(meta.snapshot_digest or meta.baked_sha or meta.repo_id, bundle)
 
     snap_cfg = _cfg_for_snapshot(meta.snapshot_id)
@@ -56,6 +59,7 @@ async def submit_compile(
             job = dispatch.insert_queued_job(
                 session,
                 repo_id=meta.repo_id,
+                user_id=user_id,
                 type_="compile",
                 program=program,
                 version=version,
@@ -96,6 +100,7 @@ async def submit_compile(
 async def submit_eval(
     metadata: str = Form(...),
     bundle: UploadFile | None = File(default=None),
+    cf_access_client_id: str | None = Header(default=None, alias="CF-Access-Client-Id"),
 ) -> List[schemas.JobSubmissionResult]:
     meta = schemas.EvalSubmissionMetadata.model_validate_json(metadata)
     bundle_key = _store_bundle(meta.snapshot_digest or meta.baked_sha or meta.repo_id, bundle)
@@ -117,6 +122,7 @@ async def submit_eval(
                     f"compile job {cfg.compile_job_id} is in status "
                     f"{parent.status!r}; only 'succeeded' compiles can be evaluated",
                 )
+            user_id = submission_user_id(meta.user_id, parent.user_id, cf_access_client_id)
 
             # Inherit program/version/dataset/split from parent unless overridden.
             ppv = session.get(db.ProgramVersion, parent.program_version_id)
@@ -130,6 +136,7 @@ async def submit_eval(
             job = dispatch.insert_queued_job(
                 session,
                 repo_id=parent.repo_id,
+                user_id=user_id,
                 type_="eval",
                 program=program_obj.name,
                 version=ppv.version,

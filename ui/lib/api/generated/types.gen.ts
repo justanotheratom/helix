@@ -99,6 +99,10 @@ export type Job = {
      */
     repo_id?: string;
     /**
+     * queue serialization key for the submitting user
+     */
+    user_id?: string;
+    /**
      * content-addressed snapshot the job runs against
      */
     snapshot_id?: string;
@@ -158,6 +162,10 @@ export type CompileSubmissionMetadata = {
      */
     repo_id: string;
     /**
+     * queue serialization key; defaults to the authenticated client or anonymous
+     */
+    user_id?: string;
+    /**
      * published snapshot the job runs against
      */
     snapshot_id?: string;
@@ -203,6 +211,10 @@ export type EvalSubmissionMetadata = {
      * trusted-local multi-repo key
      */
     repo_id: string;
+    /**
+     * queue serialization key; evals inherit the parent compile user when omitted
+     */
+    user_id?: string;
     snapshot_id?: string;
     snapshot_digest?: string;
     helix_runtime_version?: string;
@@ -236,6 +248,10 @@ export type ImportCompileMetadata = {
      * trusted-local multi-repo key
      */
     repo_id: string;
+    /**
+     * queue serialization key; defaults to the authenticated client or anonymous
+     */
+    user_id?: string;
     program: string;
     version: string;
     dataset: string;

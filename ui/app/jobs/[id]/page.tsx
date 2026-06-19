@@ -200,6 +200,7 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         <dt>program/version</dt><dd>{job.program}/{job.version}</dd>
         <dt>dataset/split</dt><dd>{job.dataset}/{job.split}</dd>
         <dt>config_path</dt><dd>{job.config_path ?? "-"}</dd>
+        <dt>user_id</dt><dd>{job.user_id ?? "-"}</dd>
         <dt>run_label</dt><dd>{job.run_label}</dd>
         <dt>snapshot_id</dt><dd>{job.snapshot_id ?? "(imported)"}</dd>
         {job.blocked_reason && (<><dt>blocked_reason</dt><dd>{job.blocked_reason}</dd></>)}

@@ -7,7 +7,6 @@ from uuid import UUID
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
 
 from ..models.job_status import JobStatus
 from ..models.job_type import JobType
@@ -31,6 +30,7 @@ class Job:
         attempt (int):
         created_at (datetime.datetime):
         repo_id (None | str | Unset): trusted-local multi-repo key
+        user_id (None | str | Unset): queue serialization key for the submitting user
         snapshot_id (None | Unset | UUID): content-addressed snapshot the job runs against
         blocked_reason (None | str | Unset): why a 'blocked' job could not run (e.g. snapshot unavailable)
         program (None | str | Unset):
@@ -60,6 +60,7 @@ class Job:
     attempt: int
     created_at: datetime.datetime
     repo_id: None | str | Unset = UNSET
+    user_id: None | str | Unset = UNSET
     snapshot_id: None | Unset | UUID = UNSET
     blocked_reason: None | str | Unset = UNSET
     program: None | str | Unset = UNSET
@@ -101,6 +102,12 @@ class Job:
             repo_id = UNSET
         else:
             repo_id = self.repo_id
+
+        user_id: None | str | Unset
+        if isinstance(self.user_id, Unset):
+            user_id = UNSET
+        else:
+            user_id = self.user_id
 
         snapshot_id: None | str | Unset
         if isinstance(self.snapshot_id, Unset):
@@ -234,6 +241,8 @@ class Job:
         )
         if repo_id is not UNSET:
             field_dict["repo_id"] = repo_id
+        if user_id is not UNSET:
+            field_dict["user_id"] = user_id
         if snapshot_id is not UNSET:
             field_dict["snapshot_id"] = snapshot_id
         if blocked_reason is not UNSET:
@@ -290,7 +299,7 @@ class Job:
 
         attempt = d.pop("attempt")
 
-        created_at = isoparse(d.pop("created_at"))
+        created_at = datetime.datetime.fromisoformat(d.pop("created_at"))
 
         def _parse_repo_id(data: object) -> None | str | Unset:
             if data is None:
@@ -300,6 +309,15 @@ class Job:
             return cast(None | str | Unset, data)
 
         repo_id = _parse_repo_id(d.pop("repo_id", UNSET))
+
+        def _parse_user_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        user_id = _parse_user_id(d.pop("user_id", UNSET))
 
         def _parse_snapshot_id(data: object) -> None | Unset | UUID:
             if data is None:
@@ -415,7 +433,7 @@ class Job:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                lease_expires_at_type_0 = isoparse(data)
+                lease_expires_at_type_0 = datetime.datetime.fromisoformat(data)
 
                 return lease_expires_at_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
@@ -452,7 +470,7 @@ class Job:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                started_at_type_0 = isoparse(data)
+                started_at_type_0 = datetime.datetime.fromisoformat(data)
 
                 return started_at_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
@@ -469,7 +487,7 @@ class Job:
             try:
                 if not isinstance(data, str):
                     raise TypeError()
-                ended_at_type_0 = isoparse(data)
+                ended_at_type_0 = datetime.datetime.fromisoformat(data)
 
                 return ended_at_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
@@ -516,6 +534,7 @@ class Job:
             attempt=attempt,
             created_at=created_at,
             repo_id=repo_id,
+            user_id=user_id,
             snapshot_id=snapshot_id,
             blocked_reason=blocked_reason,
             program=program,

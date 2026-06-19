@@ -24,6 +24,7 @@ class CompileSubmissionMetadata:
     Attributes:
         repo_id (str): trusted-local multi-repo key
         configs (list[CompileSubmissionMetadataConfigsItem]):
+        user_id (None | str | Unset): queue serialization key; defaults to the authenticated client or anonymous
         snapshot_id (None | Unset | UUID): published snapshot the job runs against
         snapshot_digest (None | str | Unset):
         helix_runtime_version (None | str | Unset): consumer's required helix-runtime version spec
@@ -35,6 +36,7 @@ class CompileSubmissionMetadata:
 
     repo_id: str
     configs: list[CompileSubmissionMetadataConfigsItem]
+    user_id: None | str | Unset = UNSET
     snapshot_id: None | Unset | UUID = UNSET
     snapshot_digest: None | str | Unset = UNSET
     helix_runtime_version: None | str | Unset = UNSET
@@ -51,6 +53,12 @@ class CompileSubmissionMetadata:
         for configs_item_data in self.configs:
             configs_item = configs_item_data.to_dict()
             configs.append(configs_item)
+
+        user_id: None | str | Unset
+        if isinstance(self.user_id, Unset):
+            user_id = UNSET
+        else:
+            user_id = self.user_id
 
         snapshot_id: None | str | Unset
         if isinstance(self.snapshot_id, Unset):
@@ -102,6 +110,8 @@ class CompileSubmissionMetadata:
                 "configs": configs,
             }
         )
+        if user_id is not UNSET:
+            field_dict["user_id"] = user_id
         if snapshot_id is not UNSET:
             field_dict["snapshot_id"] = snapshot_id
         if snapshot_digest is not UNSET:
@@ -136,6 +146,15 @@ class CompileSubmissionMetadata:
             )
 
             configs.append(configs_item)
+
+        def _parse_user_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        user_id = _parse_user_id(d.pop("user_id", UNSET))
 
         def _parse_snapshot_id(data: object) -> None | Unset | UUID:
             if data is None:
@@ -206,6 +225,7 @@ class CompileSubmissionMetadata:
         compile_submission_metadata = cls(
             repo_id=repo_id,
             configs=configs,
+            user_id=user_id,
             snapshot_id=snapshot_id,
             snapshot_digest=snapshot_digest,
             helix_runtime_version=helix_runtime_version,

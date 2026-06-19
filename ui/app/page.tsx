@@ -125,6 +125,7 @@ export default function JobsPage() {
           <thead>
             <tr>
               <th>id</th><th>type</th><th>status</th>
+              <th>user</th>
               <th>program/version</th><th>dataset/split</th>
               <th>started</th><th>duration</th><th>summary</th>
             </tr>
@@ -135,6 +136,7 @@ export default function JobsPage() {
                 <td><Link href={`/jobs/${j.id}`}>{j.id.slice(0, 8)}</Link></td>
                 <td>{j.type}</td>
                 <td className={`status-${j.status}`}>{j.status}</td>
+                <td>{j.user_id ?? "-"}</td>
                 <td>{j.program ?? "-"}/{j.version ?? "-"}</td>
                 <td>{j.dataset ?? "-"}/{j.split ?? "-"}</td>
                 <td>{j.started_at?.slice(11, 19) ?? "-"}</td>

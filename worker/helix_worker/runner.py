@@ -314,12 +314,12 @@ def _run_compile(job: dict[str, Any], work_root: str, ctx: dict[str, Any]) -> No
     summary = _parse_summary(log_path)
     if rc == 0:
         _terminal(job_id, attempt, "succeeded", exit_code=0, summary=summary)
-        _maybe_auto_eval(job_id, job["repo_id"])
+        _maybe_auto_eval(job_id, job["repo_id"], job["user_id"])
     else:
         _terminal(job_id, attempt, "failed", exit_code=rc, summary=summary)
 
 
-def _maybe_auto_eval(compile_job_id: uuid.UUID, repo_id: str) -> None:
+def _maybe_auto_eval(compile_job_id: uuid.UUID, repo_id: str, user_id: str) -> None:
     """If the API attached `auto_eval_config_path` to this compile's summary
     at submission time, queue the chained eval now that we've succeeded.
 
@@ -339,7 +339,7 @@ def _maybe_auto_eval(compile_job_id: uuid.UUID, repo_id: str) -> None:
         return
     try:
         result = api_submit_eval(
-            repo_id=repo_id, config_path=aec, compile_job_id=compile_job_id
+            repo_id=repo_id, user_id=user_id, config_path=aec, compile_job_id=compile_job_id
         )
         log.info("auto_eval_queued", compile_job_id=str(compile_job_id), result=result)
     except Exception as e:  # noqa: BLE001

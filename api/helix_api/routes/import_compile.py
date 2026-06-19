@@ -7,10 +7,11 @@ import tarfile
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from sqlalchemy import select
 
 from .. import blob, db, dispatch, schemas
+from ..identity import submission_user_id
 from ..langfuse_link import traces_url
 from ..settings import settings
 
@@ -21,8 +22,10 @@ router = APIRouter(tags=["jobs"])
 async def import_compile(
     metadata: str = Form(...),
     bundle: UploadFile = File(...),
+    cf_access_client_id: str | None = Header(default=None, alias="CF-Access-Client-Id"),
 ):
     meta = schemas.ImportCompileMetadata.model_validate_json(metadata)
+    user_id = submission_user_id(meta.user_id, cf_access_client_id)
     tar_bytes = bundle.file.read()
 
     with db.get_session() as session:
@@ -49,6 +52,7 @@ async def import_compile(
         job = dispatch.insert_queued_job(
             session,
             repo_id=meta.repo_id,
+            user_id=user_id,
             type_="compile",
             program=meta.program,
             version=meta.version,
