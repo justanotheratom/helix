@@ -314,6 +314,19 @@ tunnel automatically.
 
 - **Update Helix:** `cd /opt/helix && git pull && bash deploy/build.sh` then the
   bring-up command above.
+- **CI/CD from GitHub:** pushes to `master` can deploy automatically with the
+  checked-in workflow. Add these repository secrets:
+  `HELIX_DEPLOY_HOST`, `HELIX_DEPLOY_SSH_KEY`, and optionally
+  `HELIX_DEPLOY_USER` (defaults to `root`), `HELIX_DEPLOY_PORT` (defaults to
+  `22`), `HELIX_DEPLOY_PATH` (defaults to `/opt/helix`), and
+  `HELIX_DEPLOY_KNOWN_HOSTS`.
+  For non-Cloudflare installs, set the GitHub environment variable
+  `HELIX_COMPOSE_FILES` to the compose files you use.
+  The deploy script builds new images, applies unapplied Helix DB migrations,
+  then waits for running jobs to finish before restarting services. Queued jobs
+  remain queued and resume on the new worker. If running jobs do not drain
+  within `HELIX_DEPLOY_DRAIN_TIMEOUT_SECONDS` (GitHub environment variable,
+  default `3600`), the deploy fails without restarting the worker.
 - **Add/remove teammates:** edit the Access policy (dashboard or API). For the
   full teammate onboarding flow (browser + CLI), see
   [team-access.md](team-access.md).

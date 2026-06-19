@@ -1,0 +1,71 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Helix host
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.HELIX_DEPLOY_SSH_KEY }}
+          SSH_HOST: ${{ secrets.HELIX_DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.HELIX_DEPLOY_PORT }}
+          SSH_KNOWN_HOSTS: ${{ secrets.HELIX_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_HOST"
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/helix_deploy_key
+          chmod 600 ~/.ssh/helix_deploy_key
+
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "${SSH_PORT:-22}" "$SSH_HOST" > ~/.ssh/known_hosts
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          SSH_HOST: ${{ secrets.HELIX_DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.HELIX_DEPLOY_PORT }}
+          SSH_USER: ${{ secrets.HELIX_DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.HELIX_DEPLOY_PATH }}
+          COMPOSE_FILES: ${{ vars.HELIX_COMPOSE_FILES }}
+          DRAIN_TIMEOUT_SECONDS: ${{ vars.HELIX_DEPLOY_DRAIN_TIMEOUT_SECONDS }}
+        run: |
+          set -euo pipefail
+          user="${SSH_USER:-root}"
+          port="${SSH_PORT:-22}"
+          path="${DEPLOY_PATH:-/opt/helix}"
+          compose_files="${COMPOSE_FILES:-docker-compose.yml docker-compose.prod.yml docker-compose.cloudflare.yml}"
+          drain_timeout="${DRAIN_TIMEOUT_SECONDS:-3600}"
+          branch="${GITHUB_REF_NAME:-master}"
+
+          ssh -i ~/.ssh/helix_deploy_key -p "$port" "$user@$SSH_HOST" \
+            "set -euo pipefail
+             cd '$path'
+             git fetch origin '$branch'
+             git reset --hard '$GITHUB_SHA'
+             HELIX_COMPOSE_FILES='$compose_files' \
+             HELIX_DEPLOY_DRAIN_TIMEOUT_SECONDS='$drain_timeout' \
+             bash deploy/ci-deploy.sh"
