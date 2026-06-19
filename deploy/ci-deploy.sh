@@ -15,6 +15,7 @@ DEPLOY_DIR="$ROOT/deploy"
 IFS=' ' read -r -a COMPOSE_FILES <<< "${HELIX_COMPOSE_FILES:-docker-compose.yml docker-compose.prod.yml docker-compose.cloudflare.yml}"
 DRAIN_TIMEOUT_SECONDS="${HELIX_DEPLOY_DRAIN_TIMEOUT_SECONDS:-3600}"
 DRAIN_POLL_SECONDS="${HELIX_DEPLOY_DRAIN_POLL_SECONDS:-15}"
+DEPLOYMENT_DRAIN_REASON="deployment_drain"
 
 compose() {
     local args=()
@@ -105,11 +106,34 @@ running_jobs_count() {
     query_scalar "SELECT count(*) FROM jobs WHERE status = 'running'"
 }
 
+park_queued_jobs_for_deploy() {
+    psql -v ON_ERROR_STOP=1 -c \
+        "UPDATE jobs
+         SET status = 'blocked',
+             blocked_reason = '$DEPLOYMENT_DRAIN_REASON'
+         WHERE status = 'queued'
+           AND cancel_requested = false
+         RETURNING id, type, created_at"
+}
+
+unpark_deployment_drain_jobs() {
+    psql -v ON_ERROR_STOP=1 -c \
+        "UPDATE jobs
+         SET status = 'queued',
+             blocked_reason = NULL
+         WHERE status = 'blocked'
+           AND blocked_reason = '$DEPLOYMENT_DRAIN_REASON'
+         RETURNING id, type, created_at"
+}
+
 wait_for_running_jobs_to_drain() {
     local deadline=$((SECONDS + DRAIN_TIMEOUT_SECONDS))
     local running
 
     while true; do
+        # Keep old workers from grabbing queued jobs while this deploy waits for
+        # already-running jobs to finish. The EXIT trap below restores them.
+        park_queued_jobs_for_deploy
         running="$(running_jobs_count)"
         if [[ "$running" == "0" ]]; then
             echo "no running jobs; safe to restart workers"
@@ -132,6 +156,7 @@ main() {
     bash deploy/build.sh
 
     cd "$DEPLOY_DIR"
+    trap unpark_deployment_drain_jobs EXIT
     compose up -d helix-postgres helix-minio helix-redis
     wait_for_postgres
     apply_migrations
@@ -142,6 +167,8 @@ main() {
     # Prevent a queued job from starting on the old worker during the restart.
     compose stop helix-worker || true
     compose up -d --remove-orphans
+    unpark_deployment_drain_jobs
+    trap - EXIT
     compose ps
 }
 
