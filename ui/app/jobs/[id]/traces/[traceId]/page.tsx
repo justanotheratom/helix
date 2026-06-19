@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, Observation, TraceDetail } from "@/lib/api";
+import { formatLocalTimestamp } from "@/lib/time";
 
 export default function TraceDetailPage({
   params,
@@ -34,7 +35,7 @@ export default function TraceDetailPage({
       </h1>
       <dl className="kv">
         <dt>id</dt><dd><code>{trace.id}</code></dd>
-        <dt>started</dt><dd>{trace.timestamp}</dd>
+        <dt>started</dt><dd>{formatLocalTimestamp(trace.timestamp)}</dd>
         <dt>latency</dt><dd>{trace.latency != null ? `${trace.latency.toFixed(3)}s` : "-"}</dd>
         <dt>total cost</dt><dd>{trace.totalCost != null ? `$${trace.totalCost.toFixed(6)}` : "-"}</dd>
         <dt>environment</dt><dd>{trace.environment ?? "-"}</dd>

@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, Artifact, Job } from "@/lib/api";
 import { parseProgress, Progress } from "@/lib/progress";
+import { formatLocalTimestamp } from "@/lib/time";
 
 function Bar({ pct, tone = "accent" }: { pct: number | null; tone?: string }) {
   return (
@@ -207,9 +208,9 @@ export default function JobDetail({ params }: { params: { id: string } }) {
         <dt>worker_id</dt><dd>{job.worker_id ?? "-"}</dd>
         <dt>emitted_run_number</dt><dd>{job.emitted_run_number ?? "-"}</dd>
         <dt>attempt</dt><dd>{job.attempt}</dd>
-        <dt>created_at</dt><dd>{job.created_at}</dd>
-        <dt>started_at</dt><dd>{job.started_at ?? "-"}</dd>
-        <dt>ended_at</dt><dd>{job.ended_at ?? "-"}</dd>
+        <dt>created_at</dt><dd>{formatLocalTimestamp(job.created_at)}</dd>
+        <dt>started_at</dt><dd>{formatLocalTimestamp(job.started_at)}</dd>
+        <dt>ended_at</dt><dd>{formatLocalTimestamp(job.ended_at)}</dd>
         <dt>exit_code</dt><dd>{job.exit_code ?? "-"}</dd>
       </dl>
 

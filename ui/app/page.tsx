@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, Job, JobStatus } from "@/lib/api";
+import { formatLocalTime } from "@/lib/time";
 
 const STATUSES: JobStatus[] = ["queued", "running", "succeeded", "failed", "cancelled", "blocked"];
 
@@ -139,7 +140,7 @@ export default function JobsPage() {
                 <td>{j.user_id ?? "-"}</td>
                 <td>{j.program ?? "-"}/{j.version ?? "-"}</td>
                 <td>{j.dataset ?? "-"}/{j.split ?? "-"}</td>
-                <td>{j.started_at?.slice(11, 19) ?? "-"}</td>
+                <td>{formatLocalTime(j.started_at)}</td>
                 <td>{durationFmt(j.started_at, j.ended_at)}</td>
                 <td>{j.status === "running" && j.summary && (j.summary as { progress?: Progress }).progress
                   ? <RunningCell p={(j.summary as { progress: Progress }).progress} />
