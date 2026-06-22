@@ -15,6 +15,7 @@ export interface Job {
   type: JobType;
   status: JobStatus;
   repo_id: string | null;
+  user_id: string | null;
   snapshot_id: string | null;
   blocked_reason: string | null;
   program: string | null;

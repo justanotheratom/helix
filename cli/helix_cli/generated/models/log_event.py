@@ -6,7 +6,6 @@ from typing import Any, TypeVar
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
-from dateutil.parser import isoparse
 
 from ..models.log_event_stream import LogEventStream
 
@@ -56,7 +55,7 @@ class LogEvent:
         d = dict(src_dict)
         seq = d.pop("seq")
 
-        ts = isoparse(d.pop("ts"))
+        ts = datetime.datetime.fromisoformat(d.pop("ts"))
 
         stream = LogEventStream(d.pop("stream"))
 

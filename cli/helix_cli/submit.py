@@ -13,7 +13,7 @@ import yaml
 from rich.console import Console
 
 from . import api, bundle
-from .config import job_traces_url, job_ui_url, repo_root
+from .config import job_traces_url, job_ui_url, repo_root, user_id
 from .infer import infer_all, infer_program_version, infer_dataset_split
 
 
@@ -93,6 +93,7 @@ def cmd_submit_compile(args: argparse.Namespace) -> int:
 
     metadata = {
         "repo_id": bundle.cfg().repo_id,
+        "user_id": user_id(),
         "program": args.program,
         "version": args.version,
         "configs": configs_meta,
@@ -135,6 +136,7 @@ def cmd_submit_eval(args: argparse.Namespace) -> int:
 
     metadata = {
         "repo_id": bundle.cfg().repo_id,
+        "user_id": user_id(),
         "configs": configs_meta,
         "overlay_files": overlay_paths + config_rels,
         **snap_fields,
@@ -208,6 +210,7 @@ def _import_legacy_results(local_results_dir: str) -> str:
 
     metadata = {
         "repo_id": bundle.cfg().repo_id,
+        "user_id": user_id(),
         "program": program,
         "version": version,
         "dataset": dataset,

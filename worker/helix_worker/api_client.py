@@ -17,7 +17,7 @@ HELIX_API_INTERNAL = os.environ.get("HELIX_API_INTERNAL", "http://helix-api:8000
 
 
 def submit_eval(
-    *, repo_id: str, config_path: str, compile_job_id: uuid.UUID,
+    *, repo_id: str, user_id: str, config_path: str, compile_job_id: uuid.UUID,
 ) -> list[dict[str, Any]]:
     """Auto-chain: ask helix-api to enqueue an eval against the just-finished compile.
 
@@ -27,6 +27,7 @@ def submit_eval(
     """
     metadata = {
         "repo_id": repo_id,
+        "user_id": user_id,
         "configs": [
             {
                 "config_path": config_path,

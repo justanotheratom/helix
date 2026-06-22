@@ -22,6 +22,7 @@ class ImportCompileMetadata:
         split (str):
         emitted_run_number (int):
         results_dir_basename (str):
+        user_id (None | str | Unset): queue serialization key; defaults to the authenticated client or anonymous
         compile_config_path (None | str | Unset):
     """
 
@@ -32,6 +33,7 @@ class ImportCompileMetadata:
     split: str
     emitted_run_number: int
     results_dir_basename: str
+    user_id: None | str | Unset = UNSET
     compile_config_path: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -49,6 +51,12 @@ class ImportCompileMetadata:
         emitted_run_number = self.emitted_run_number
 
         results_dir_basename = self.results_dir_basename
+
+        user_id: None | str | Unset
+        if isinstance(self.user_id, Unset):
+            user_id = UNSET
+        else:
+            user_id = self.user_id
 
         compile_config_path: None | str | Unset
         if isinstance(self.compile_config_path, Unset):
@@ -69,6 +77,8 @@ class ImportCompileMetadata:
                 "results_dir_basename": results_dir_basename,
             }
         )
+        if user_id is not UNSET:
+            field_dict["user_id"] = user_id
         if compile_config_path is not UNSET:
             field_dict["compile_config_path"] = compile_config_path
 
@@ -91,6 +101,15 @@ class ImportCompileMetadata:
 
         results_dir_basename = d.pop("results_dir_basename")
 
+        def _parse_user_id(data: object) -> None | str | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(None | str | Unset, data)
+
+        user_id = _parse_user_id(d.pop("user_id", UNSET))
+
         def _parse_compile_config_path(data: object) -> None | str | Unset:
             if data is None:
                 return data
@@ -110,6 +129,7 @@ class ImportCompileMetadata:
             split=split,
             emitted_run_number=emitted_run_number,
             results_dir_basename=results_dir_basename,
+            user_id=user_id,
             compile_config_path=compile_config_path,
         )
 

@@ -83,6 +83,7 @@ class Job(Base):
     type: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     repo_id: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[str] = mapped_column(Text, nullable=False, default="anonymous")
     program_version_id: Mapped[int] = mapped_column(ForeignKey("program_versions.id"), nullable=False)
     dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), nullable=False)
     split_id: Mapped[int] = mapped_column(ForeignKey("splits.id"), nullable=False)

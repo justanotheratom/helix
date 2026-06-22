@@ -64,6 +64,7 @@ git clone https://github.com/justanotheratom/helix ~/GitHub/helix
 # env — add to ~/.zshrc (or a sourced secrets file)
 export HELIX_HOME=~/GitHub/helix
 export HELIX_BASE_URL=https://helix.<yourdomain>
+export HELIX_USER_ID=<your-email-or-name>
 export CF_ACCESS_CLIENT_ID=<their-service-token-client-id>
 export CF_ACCESS_CLIENT_SECRET=<their-service-token-client-secret>
 alias helix='uv run --project $HELIX_HOME helix'
@@ -84,11 +85,15 @@ worker runs the job. So everyone's submits land on the same shared box.
 > for local use). See [self-hosting.md §5e](self-hosting.md#5e-cli--programmatic-access-service-token)
 > for how the service token + Service Auth policy are created.
 >
+> `HELIX_USER_ID` is the queue serialization key: Helix runs at most one job
+> per user at a time, while jobs from different users may run in parallel. If
+> unset, the CLI uses the local OS username.
+>
 > Prefer a file over `~/.zshrc`? The CLI also **auto-loads the consumer's
 > main-worktree-root `.env`** (resolved via `git rev-parse --git-common-dir`,
 > so it works from linked git worktrees too) — put `HELIX_BASE_URL` /
-> `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` there instead of exporting
-> them. Real shell variables still override the `.env`. Keep that file
+> `HELIX_USER_ID` / `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` there
+> instead of exporting them. Real shell variables still override the `.env`. Keep that file
 > gitignored — it holds a credential.
 
 ### Admin: per-teammate service tokens (recommended)

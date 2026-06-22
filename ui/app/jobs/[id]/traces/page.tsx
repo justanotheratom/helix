@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api, TraceListResponse } from "@/lib/api";
+import { formatLocalTime } from "@/lib/time";
 
 const LIMIT = 50;
 
@@ -54,7 +55,7 @@ export default function JobTracesPage({ params }: { params: { id: string } }) {
                 <Link href={`/jobs/${jobId}/traces/${t.id}`}>{t.id.slice(0, 12)}</Link>
               </td>
               <td>{t.name ?? "-"}</td>
-              <td>{t.timestamp.slice(11, 19)}</td>
+              <td>{formatLocalTime(t.timestamp)}</td>
               <td>{t.latency != null ? `${t.latency.toFixed(2)}s` : "-"}</td>
               <td>{t.totalCost != null ? `$${t.totalCost.toFixed(4)}` : "-"}</td>
               <td className="muted preview">{previewJSON(t.input)}</td>

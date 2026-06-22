@@ -39,6 +39,7 @@ class Job(BaseModel):
     type: JobType
     status: JobStatus
     repo_id: str | None = None
+    user_id: str | None = None
     snapshot_id: uuid.UUID | None = None
     blocked_reason: str | None = None
     program: str | None = None
@@ -79,6 +80,7 @@ class CompileConfigEntry(BaseModel):
 
 class CompileSubmissionMetadata(BaseModel):
     repo_id: str
+    user_id: str | None = Field(default=None, max_length=256)
     baked_sha: str | None = None
     snapshot_id: uuid.UUID | None = None
     snapshot_digest: str | None = None
@@ -98,6 +100,7 @@ class EvalConfigEntry(BaseModel):
 
 class EvalSubmissionMetadata(BaseModel):
     repo_id: str
+    user_id: str | None = Field(default=None, max_length=256)
     baked_sha: str | None = None
     snapshot_id: uuid.UUID | None = None
     snapshot_digest: str | None = None
@@ -112,6 +115,7 @@ class EvalSubmissionMetadata(BaseModel):
 
 class ImportCompileMetadata(BaseModel):
     repo_id: str
+    user_id: str | None = Field(default=None, max_length=256)
     program: str
     version: str
     dataset: str
