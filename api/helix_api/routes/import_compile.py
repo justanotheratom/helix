@@ -22,10 +22,11 @@ router = APIRouter(tags=["jobs"])
 async def import_compile(
     metadata: str = Form(...),
     bundle: UploadFile = File(...),
+    cf_access_user_email: str | None = Header(default=None, alias="Cf-Access-Authenticated-User-Email"),
     cf_access_client_id: str | None = Header(default=None, alias="CF-Access-Client-Id"),
 ):
     meta = schemas.ImportCompileMetadata.model_validate_json(metadata)
-    user_id = submission_user_id(meta.user_id, cf_access_client_id)
+    user_id = submission_user_id(cf_access_user_email, meta.user_id, cf_access_client_id)
     tar_bytes = bundle.file.read()
 
     with db.get_session() as session:
