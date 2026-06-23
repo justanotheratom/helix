@@ -114,6 +114,12 @@ services:
             GROQ_API_KEY: ${GROQ_API_KEY:-}
             TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
             HF_TOKEN: ${HF_TOKEN:-}
+            # Vertex AI tuned-Gemini access (us/eu multi-region endpoints, via
+            # google-genai). SA key JSON in-env since the container has no gcloud
+            # config dir; project/location for the genai client.
+            GOOGLE_APPLICATION_CREDENTIALS_JSON: ${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}
+            VERTEX_PROJECT: ${VERTEX_PROJECT:-}
+            VERTEX_LOCATION: ${VERTEX_LOCATION:-}
             # Langfuse → traces published to the internal hostname.
             LANGFUSE_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
             LANGFUSE_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY}
