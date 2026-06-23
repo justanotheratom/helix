@@ -44,6 +44,71 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
+      # Render the host .env entirely from GitHub Environment secrets + variables
+      # (single source of truth). Every secret/variable in the `production`
+      # environment becomes a KEY=VALUE line EXCEPT the SSH connection secrets
+      # (HELIX_DEPLOY_*) and the implicit github_token. A safety guard aborts
+      # BEFORE touching the host if required stateful-service secrets are absent
+      # (so a partial/empty secret set can never wipe a working .env), and the
+      # existing host .env is backed up before the atomic swap.
+      #
+      # NOTE: secret values must be single-line (the .env is line-based). Store
+      # the Vertex service-account key as COMPACT one-line JSON.
+      - name: Render production .env from GitHub secrets/variables
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+          VARS_JSON: ${{ toJSON(vars) }}
+          SSH_HOST: ${{ secrets.HELIX_DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.HELIX_DEPLOY_PORT }}
+          SSH_USER: ${{ secrets.HELIX_DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.HELIX_DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          user="${SSH_USER:-root}"
+          port="${SSH_PORT:-22}"
+          path="${DEPLOY_PATH:-/opt/helix}"
+
+          # Connection-only secrets and the Actions token never belong in .env.
+          jq -r '
+            to_entries[]
+            | select(.key | test("^HELIX_DEPLOY_") | not)
+            | select(.key | ascii_downcase != "github_token")
+            | "\(.key)=\(.value)"
+          ' <<< "$SECRETS_JSON" > rendered.env
+          jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$VARS_JSON" >> rendered.env
+
+          # --- Safety guard: never ship an empty/partial .env. These keys back
+          # stateful services (Postgres/Redis/MinIO/Langfuse) whose volumes
+          # already exist on the host; a wrong/missing value breaks auth. ---
+          required="HELIX_POSTGRES_PASSWORD HELIX_REDIS_PASSWORD HELIX_MINIO_ROOT_PASSWORD \
+                    LANGFUSE_POSTGRES_PASSWORD LANGFUSE_CLICKHOUSE_PASSWORD LANGFUSE_REDIS_PASSWORD \
+                    LANGFUSE_SALT LANGFUSE_ENCRYPTION_KEY LANGFUSE_NEXTAUTH_SECRET"
+          missing=""
+          for k in $required; do
+            grep -qE "^${k}=.+" rendered.env || missing="$missing $k"
+          done
+          n=$(grep -cE '^[A-Za-z_][A-Za-z0-9_]*=' rendered.env || true)
+          if [ -n "$missing" ] || [ "$n" -lt 15 ]; then
+            echo "::error::Refusing to deploy: rendered .env has $n keys and is missing:${missing:- (none)}." >&2
+            echo "::error::Populate the 'production' environment secrets/variables before deploying (see deploy/.env.example)." >&2
+            exit 1
+          fi
+          echo "rendered .env with $n keys"
+
+          # Back up the current host .env, then atomically replace it.
+          scp -i ~/.ssh/helix_deploy_key -P "$port" rendered.env \
+            "$user@$SSH_HOST:$path/deploy/.env.incoming"
+          ssh -i ~/.ssh/helix_deploy_key -p "$port" "$user@$SSH_HOST" \
+            "set -euo pipefail
+             cd '$path/deploy'
+             umask 077
+             if [ -f .env ]; then cp -a .env \".env.bak.\$(date +%Y%m%d%H%M%S)\"; fi
+             mv .env.incoming .env
+             chmod 600 .env
+             # retain the 10 most recent backups
+             ls -1t .env.bak.* 2>/dev/null | tail -n +11 | xargs -r rm -f"
+          rm -f rendered.env
+
       - name: Deploy
         env:
           SSH_HOST: ${{ secrets.HELIX_DEPLOY_HOST }}
