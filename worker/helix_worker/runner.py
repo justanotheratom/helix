@@ -329,7 +329,8 @@ def _maybe_auto_eval(compile_job_id: uuid.UUID, repo_id: str, user_id: str) -> N
     """
     with engine.begin() as conn:
         row = conn.execute(
-            text("SELECT summary FROM jobs WHERE id = :jid"), {"jid": compile_job_id}
+            text("SELECT summary, allow_parallel_user_jobs FROM jobs WHERE id = :jid"),
+            {"jid": compile_job_id},
         ).mappings().first()
     if not row:
         return
@@ -339,7 +340,11 @@ def _maybe_auto_eval(compile_job_id: uuid.UUID, repo_id: str, user_id: str) -> N
         return
     try:
         result = api_submit_eval(
-            repo_id=repo_id, user_id=user_id, config_path=aec, compile_job_id=compile_job_id
+            repo_id=repo_id,
+            user_id=user_id,
+            config_path=aec,
+            compile_job_id=compile_job_id,
+            allow_parallel_user_jobs=bool(row["allow_parallel_user_jobs"]),
         )
         log.info("auto_eval_queued", compile_job_id=str(compile_job_id), result=result)
     except Exception as e:  # noqa: BLE001

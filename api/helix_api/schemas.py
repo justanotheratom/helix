@@ -40,6 +40,7 @@ class Job(BaseModel):
     status: JobStatus
     repo_id: str | None = None
     user_id: str | None = None
+    allow_parallel_user_jobs: bool = False
     snapshot_id: uuid.UUID | None = None
     blocked_reason: str | None = None
     program: str | None = None
@@ -81,6 +82,7 @@ class CompileConfigEntry(BaseModel):
 class CompileSubmissionMetadata(BaseModel):
     repo_id: str
     user_id: str | None = Field(default=None, max_length=256)
+    allow_parallel_user_jobs: bool = False
     baked_sha: str | None = None
     snapshot_id: uuid.UUID | None = None
     snapshot_digest: str | None = None
@@ -101,6 +103,7 @@ class EvalConfigEntry(BaseModel):
 class EvalSubmissionMetadata(BaseModel):
     repo_id: str
     user_id: str | None = Field(default=None, max_length=256)
+    allow_parallel_user_jobs: bool = False
     baked_sha: str | None = None
     snapshot_id: uuid.UUID | None = None
     snapshot_digest: str | None = None

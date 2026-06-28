@@ -72,6 +72,7 @@ async def submit_compile(
                 snapshot_id=meta.snapshot_id,
                 helix_runtime_version=meta.helix_runtime_version,
                 parent_job_id=None,
+                allow_parallel_user_jobs=meta.allow_parallel_user_jobs,
             )
             session.flush()  # need job.id
 
@@ -152,6 +153,7 @@ async def submit_eval(
                 snapshot_id=meta.snapshot_id or parent.snapshot_id,
                 helix_runtime_version=meta.helix_runtime_version or parent.helix_runtime_version,
                 parent_job_id=parent.id,
+                allow_parallel_user_jobs=meta.allow_parallel_user_jobs,
             )
             session.flush()
             out.append(

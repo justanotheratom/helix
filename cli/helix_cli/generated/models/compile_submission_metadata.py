@@ -25,6 +25,8 @@ class CompileSubmissionMetadata:
         repo_id (str): trusted-local multi-repo key
         configs (list[CompileSubmissionMetadataConfigsItem]):
         user_id (None | str | Unset): queue serialization key; defaults to the authenticated client or anonymous
+        allow_parallel_user_jobs (bool | Unset): Opt these compile jobs out of per-user queue serialization. Default:
+            False.
         snapshot_id (None | Unset | UUID): published snapshot the job runs against
         snapshot_digest (None | str | Unset):
         helix_runtime_version (None | str | Unset): consumer's required helix-runtime version spec
@@ -37,6 +39,7 @@ class CompileSubmissionMetadata:
     repo_id: str
     configs: list[CompileSubmissionMetadataConfigsItem]
     user_id: None | str | Unset = UNSET
+    allow_parallel_user_jobs: bool | Unset = False
     snapshot_id: None | Unset | UUID = UNSET
     snapshot_digest: None | str | Unset = UNSET
     helix_runtime_version: None | str | Unset = UNSET
@@ -59,6 +62,8 @@ class CompileSubmissionMetadata:
             user_id = UNSET
         else:
             user_id = self.user_id
+
+        allow_parallel_user_jobs = self.allow_parallel_user_jobs
 
         snapshot_id: None | str | Unset
         if isinstance(self.snapshot_id, Unset):
@@ -112,6 +117,8 @@ class CompileSubmissionMetadata:
         )
         if user_id is not UNSET:
             field_dict["user_id"] = user_id
+        if allow_parallel_user_jobs is not UNSET:
+            field_dict["allow_parallel_user_jobs"] = allow_parallel_user_jobs
         if snapshot_id is not UNSET:
             field_dict["snapshot_id"] = snapshot_id
         if snapshot_digest is not UNSET:
@@ -155,6 +162,8 @@ class CompileSubmissionMetadata:
             return cast(None | str | Unset, data)
 
         user_id = _parse_user_id(d.pop("user_id", UNSET))
+
+        allow_parallel_user_jobs = d.pop("allow_parallel_user_jobs", UNSET)
 
         def _parse_snapshot_id(data: object) -> None | Unset | UUID:
             if data is None:
@@ -226,6 +235,7 @@ class CompileSubmissionMetadata:
             repo_id=repo_id,
             configs=configs,
             user_id=user_id,
+            allow_parallel_user_jobs=allow_parallel_user_jobs,
             snapshot_id=snapshot_id,
             snapshot_digest=snapshot_digest,
             helix_runtime_version=helix_runtime_version,

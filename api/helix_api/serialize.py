@@ -26,6 +26,7 @@ def job_to_schema(session: Session, job: db.Job) -> schemas.Job:
         status=job.status,  # type: ignore[arg-type]
         repo_id=job.repo_id,
         user_id=job.user_id,
+        allow_parallel_user_jobs=job.allow_parallel_user_jobs,
         snapshot_id=job.snapshot_id,
         blocked_reason=job.blocked_reason,
         program=program_name,

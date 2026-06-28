@@ -31,6 +31,8 @@ class Job:
         created_at (datetime.datetime):
         repo_id (None | str | Unset): trusted-local multi-repo key
         user_id (None | str | Unset): queue serialization key for the submitting user
+        allow_parallel_user_jobs (bool | Unset): When true, this job may run even while another job from the same user
+            is running. Default: False.
         snapshot_id (None | Unset | UUID): content-addressed snapshot the job runs against
         blocked_reason (None | str | Unset): why a 'blocked' job could not run (e.g. snapshot unavailable)
         program (None | str | Unset):
@@ -61,6 +63,7 @@ class Job:
     created_at: datetime.datetime
     repo_id: None | str | Unset = UNSET
     user_id: None | str | Unset = UNSET
+    allow_parallel_user_jobs: bool | Unset = False
     snapshot_id: None | Unset | UUID = UNSET
     blocked_reason: None | str | Unset = UNSET
     program: None | str | Unset = UNSET
@@ -108,6 +111,8 @@ class Job:
             user_id = UNSET
         else:
             user_id = self.user_id
+
+        allow_parallel_user_jobs = self.allow_parallel_user_jobs
 
         snapshot_id: None | str | Unset
         if isinstance(self.snapshot_id, Unset):
@@ -243,6 +248,8 @@ class Job:
             field_dict["repo_id"] = repo_id
         if user_id is not UNSET:
             field_dict["user_id"] = user_id
+        if allow_parallel_user_jobs is not UNSET:
+            field_dict["allow_parallel_user_jobs"] = allow_parallel_user_jobs
         if snapshot_id is not UNSET:
             field_dict["snapshot_id"] = snapshot_id
         if blocked_reason is not UNSET:
@@ -318,6 +325,8 @@ class Job:
             return cast(None | str | Unset, data)
 
         user_id = _parse_user_id(d.pop("user_id", UNSET))
+
+        allow_parallel_user_jobs = d.pop("allow_parallel_user_jobs", UNSET)
 
         def _parse_snapshot_id(data: object) -> None | Unset | UUID:
             if data is None:
@@ -535,6 +544,7 @@ class Job:
             created_at=created_at,
             repo_id=repo_id,
             user_id=user_id,
+            allow_parallel_user_jobs=allow_parallel_user_jobs,
             snapshot_id=snapshot_id,
             blocked_reason=blocked_reason,
             program=program,

@@ -94,6 +94,7 @@ def cmd_submit_compile(args: argparse.Namespace) -> int:
     metadata = {
         "repo_id": bundle.cfg().repo_id,
         "user_id": user_id(),
+        "allow_parallel_user_jobs": bool(args.allow_parallel_user_jobs),
         "program": args.program,
         "version": args.version,
         "configs": configs_meta,
@@ -137,6 +138,7 @@ def cmd_submit_eval(args: argparse.Namespace) -> int:
     metadata = {
         "repo_id": bundle.cfg().repo_id,
         "user_id": user_id(),
+        "allow_parallel_user_jobs": bool(args.allow_parallel_user_jobs),
         "configs": configs_meta,
         "overlay_files": overlay_paths + config_rels,
         **snap_fields,

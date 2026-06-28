@@ -466,6 +466,10 @@ components:
         status:              { $ref: '#/components/schemas/JobStatus' }
         repo_id:             { type: string,  nullable: true, description: "trusted-local multi-repo key" }
         user_id:             { type: string,  nullable: true, description: "queue serialization key for the submitting user" }
+        allow_parallel_user_jobs:
+          type: boolean
+          default: false
+          description: "When true, this job may run even while another job from the same user is running."
         snapshot_id:         { type: string,  format: uuid, nullable: true, description: "content-addressed snapshot the job runs against" }
         blocked_reason:      { type: string,  nullable: true, description: "why a 'blocked' job could not run (e.g. snapshot unavailable)" }
         program:             { type: string,  nullable: true }
@@ -508,6 +512,10 @@ components:
       properties:
         repo_id:                { type: string, description: "trusted-local multi-repo key" }
         user_id:                { type: string, nullable: true, maxLength: 256, description: "queue serialization key; defaults to the authenticated client or anonymous" }
+        allow_parallel_user_jobs:
+          type: boolean
+          default: false
+          description: "Opt these compile jobs out of per-user queue serialization."
         snapshot_id:            { type: string, format: uuid, nullable: true, description: "published snapshot the job runs against" }
         snapshot_digest:        { type: string, nullable: true }
         helix_runtime_version:  { type: string, nullable: true, description: "consumer's required helix-runtime version spec" }
@@ -548,6 +556,10 @@ components:
       properties:
         repo_id:                { type: string, description: "trusted-local multi-repo key" }
         user_id:                { type: string, nullable: true, maxLength: 256, description: "queue serialization key; evals inherit the parent compile user when omitted" }
+        allow_parallel_user_jobs:
+          type: boolean
+          default: false
+          description: "Opt these eval jobs out of per-user queue serialization."
         snapshot_id:            { type: string, format: uuid, nullable: true }
         snapshot_digest:        { type: string, nullable: true }
         helix_runtime_version:  { type: string, nullable: true }

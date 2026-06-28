@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     st = sub.add_parser("status", help="Stack status, or detail for <job-id>")
     st.add_argument("job_id", nargs="?")
+    st.add_argument("--json", action="store_true", help="Emit JSON for job status")
     st.set_defaults(func=lambda a: cmd_status(a) if a.job_id else cmd_stack_status(a))
 
     submit_p = sub.add_parser("submit", help="Submit compile or eval job(s)")
@@ -66,6 +67,11 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--version")
     sc.add_argument("--auto-eval")
     sc.add_argument("--no-auto-eval", action="store_true")
+    sc.add_argument(
+        "--allow-parallel-user-jobs",
+        action="store_true",
+        help="Opt this submission out of per-user queue serialization.",
+    )
     sc.set_defaults(func=cmd_submit_compile)
 
     se = submit_sub.add_parser("eval")
@@ -82,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
             "directory. CLI imports it via /jobs/import-compile (idempotent) "
             "and uses the resulting job id as --compile-job."
         ),
+    )
+    se.add_argument(
+        "--allow-parallel-user-jobs",
+        action="store_true",
+        help="Opt this submission out of per-user queue serialization.",
     )
     se.set_defaults(func=cmd_submit_eval)
 

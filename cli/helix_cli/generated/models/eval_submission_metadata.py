@@ -25,6 +25,8 @@ class EvalSubmissionMetadata:
         repo_id (str): trusted-local multi-repo key
         configs (list[EvalSubmissionMetadataConfigsItem]):
         user_id (None | str | Unset): queue serialization key; evals inherit the parent compile user when omitted
+        allow_parallel_user_jobs (bool | Unset): Opt these eval jobs out of per-user queue serialization. Default:
+            False.
         snapshot_id (None | Unset | UUID):
         snapshot_digest (None | str | Unset):
         helix_runtime_version (None | str | Unset):
@@ -39,6 +41,7 @@ class EvalSubmissionMetadata:
     repo_id: str
     configs: list[EvalSubmissionMetadataConfigsItem]
     user_id: None | str | Unset = UNSET
+    allow_parallel_user_jobs: bool | Unset = False
     snapshot_id: None | Unset | UUID = UNSET
     snapshot_digest: None | str | Unset = UNSET
     helix_runtime_version: None | str | Unset = UNSET
@@ -60,6 +63,8 @@ class EvalSubmissionMetadata:
             user_id = UNSET
         else:
             user_id = self.user_id
+
+        allow_parallel_user_jobs = self.allow_parallel_user_jobs
 
         snapshot_id: None | str | Unset
         if isinstance(self.snapshot_id, Unset):
@@ -111,6 +116,8 @@ class EvalSubmissionMetadata:
         )
         if user_id is not UNSET:
             field_dict["user_id"] = user_id
+        if allow_parallel_user_jobs is not UNSET:
+            field_dict["allow_parallel_user_jobs"] = allow_parallel_user_jobs
         if snapshot_id is not UNSET:
             field_dict["snapshot_id"] = snapshot_id
         if snapshot_digest is not UNSET:
@@ -154,6 +161,8 @@ class EvalSubmissionMetadata:
             return cast(None | str | Unset, data)
 
         user_id = _parse_user_id(d.pop("user_id", UNSET))
+
+        allow_parallel_user_jobs = d.pop("allow_parallel_user_jobs", UNSET)
 
         def _parse_snapshot_id(data: object) -> None | Unset | UUID:
             if data is None:
@@ -228,6 +237,7 @@ class EvalSubmissionMetadata:
             repo_id=repo_id,
             configs=configs,
             user_id=user_id,
+            allow_parallel_user_jobs=allow_parallel_user_jobs,
             snapshot_id=snapshot_id,
             snapshot_digest=snapshot_digest,
             helix_runtime_version=helix_runtime_version,

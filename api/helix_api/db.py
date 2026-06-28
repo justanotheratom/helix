@@ -84,6 +84,9 @@ class Job(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     repo_id: Mapped[str] = mapped_column(Text, nullable=False)
     user_id: Mapped[str] = mapped_column(Text, nullable=False, default="anonymous")
+    allow_parallel_user_jobs: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     program_version_id: Mapped[int] = mapped_column(ForeignKey("program_versions.id"), nullable=False)
     dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), nullable=False)
     split_id: Mapped[int] = mapped_column(ForeignKey("splits.id"), nullable=False)

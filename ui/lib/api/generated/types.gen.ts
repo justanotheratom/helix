@@ -103,6 +103,10 @@ export type Job = {
      */
     user_id?: string;
     /**
+     * When true, this job may run even while another job from the same user is running.
+     */
+    allow_parallel_user_jobs?: boolean;
+    /**
      * content-addressed snapshot the job runs against
      */
     snapshot_id?: string;
@@ -166,6 +170,10 @@ export type CompileSubmissionMetadata = {
      */
     user_id?: string;
     /**
+     * Opt these compile jobs out of per-user queue serialization.
+     */
+    allow_parallel_user_jobs?: boolean;
+    /**
      * published snapshot the job runs against
      */
     snapshot_id?: string;
@@ -215,6 +223,10 @@ export type EvalSubmissionMetadata = {
      * queue serialization key; evals inherit the parent compile user when omitted
      */
     user_id?: string;
+    /**
+     * Opt these eval jobs out of per-user queue serialization.
+     */
+    allow_parallel_user_jobs?: boolean;
     snapshot_id?: string;
     snapshot_digest?: string;
     helix_runtime_version?: string;

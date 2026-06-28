@@ -73,6 +73,7 @@ def insert_queued_job(
     snapshot_id: uuid.UUID | None = None,
     helix_runtime_version: str | None = None,
     parent_job_id: uuid.UUID | None,
+    allow_parallel_user_jobs: bool = False,
     status: str = "queued",
     emitted_run_number: int | None = None,
 ) -> db.Job:
@@ -89,6 +90,7 @@ def insert_queued_job(
         status=status,
         repo_id=repo_id,
         user_id=user_id,
+        allow_parallel_user_jobs=allow_parallel_user_jobs,
         program_version_id=pv_id,
         dataset_id=ds_id,
         split_id=sp_id,

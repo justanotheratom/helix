@@ -11,7 +11,7 @@ from .db import engine
 
 
 def claim_next_job() -> dict[str, Any] | None:
-    """Claim the oldest queued job for a user with no running job.
+    """Claim the oldest queued job whose per-user serialization permits it.
 
     No baked_sha fence anymore: any worker can claim any repo's job. After
     claiming, the worker materializes the job's snapshot and checks runtime
@@ -22,9 +22,10 @@ def claim_next_job() -> dict[str, Any] | None:
     a snapshot_id to run in snapshot mode — those without are swept by
     fail_stale_queued_jobs.
 
-    The matching migration adds a partial unique index on (user_id) for
-    running jobs. That index is the race-proof guard when multiple workers try
-    to claim queued jobs for the same user at the same time.
+    Jobs default to serial execution per user. A job with
+    allow_parallel_user_jobs=true may be claimed even while another job from
+    the same user is running. The matching migration keeps a partial unique
+    index on (user_id) for non-parallel running jobs as the race-proof guard.
     """
     sql = text(
         """
@@ -39,10 +40,13 @@ def claim_next_job() -> dict[str, Any] | None:
           WHERE q.status='queued'
             AND q.cancel_requested = false
             AND q.snapshot_id IS NOT NULL
-            AND NOT EXISTS (
-              SELECT 1 FROM jobs r
-              WHERE r.status='running'
-                AND r.user_id = q.user_id
+            AND (
+              q.allow_parallel_user_jobs = true
+              OR NOT EXISTS (
+                SELECT 1 FROM jobs r
+                WHERE r.status='running'
+                  AND r.user_id = q.user_id
+              )
             )
           ORDER BY q.created_at
           FOR UPDATE SKIP LOCKED
@@ -50,7 +54,8 @@ def claim_next_job() -> dict[str, Any] | None:
         )
         RETURNING id, type, status, repo_id, program_version_id, dataset_id, split_id,
                   parent_job_id, config_path, bundle_blob_key,
-                  snapshot_id, helix_runtime_version, run_label, attempt, summary, user_id
+                  snapshot_id, helix_runtime_version, run_label, attempt, summary, user_id,
+                  allow_parallel_user_jobs
         """
     )
     try:
