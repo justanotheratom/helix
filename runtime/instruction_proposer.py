@@ -9,7 +9,16 @@ from gepa.core.adapter import ProposalFn
 from gepa.strategies.instruction_proposal import InstructionProposalSignature
 
 
-GENERALIZING_PROMPT_TEMPLATE = """You are an expert at reflecting on task performance and proposing prompt improvements.
+def _instruction_proposal_placeholders() -> tuple[str, str]:
+    template = getattr(InstructionProposalSignature, "default_prompt_template", "") or ""
+    if "<curr_param>" in template and "<side_info>" in template:
+        return "<curr_param>", "<side_info>"
+    return "<curr_instructions>", "<inputs_outputs_feedback>"
+
+
+def _build_generalizing_prompt_template() -> str:
+    current_instruction_placeholder, side_info_placeholder = _instruction_proposal_placeholders()
+    return f"""You are an expert at reflecting on task performance and proposing prompt improvements.
 
 CRITICAL GUIDELINES FOR PROMPT EVOLUTION:
 1. Abstract patterns, not examples. Identify general reasoning patterns, strategies, and principles from the feedback.
@@ -25,16 +34,19 @@ CRITICAL GUIDELINES FOR PROMPT EVOLUTION:
 
 I provided an assistant with the following instructions to perform a task for me:
 ```
-<curr_instructions>
+{current_instruction_placeholder}
 ```
 
 The following are examples of different task inputs provided to the assistant along with the assistant's response for each of them, and some feedback on how the assistant's response could be better:
 ```
-<inputs_outputs_feedback>
+{side_info_placeholder}
 ```
 
 Your task is to write a new instruction for the assistant. Do not copy examples or include data-specific lists.
 Provide the new instructions within ``` blocks."""
+
+
+GENERALIZING_PROMPT_TEMPLATE = _build_generalizing_prompt_template()
 
 
 class GeneralizingInstructionProposer(ProposalFn):
