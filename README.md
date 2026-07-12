@@ -144,6 +144,29 @@ uv run --project ~/GitHub/helix helix up
   lowerdirs.
 - **GC**: `helix gc` reclaims unreferenced snapshot blobs and orphan bundles.
 
+## Stable dataset splits
+
+New datasets should use ID-addressed split manifests so source-file reordering
+cannot change train, validation, or test membership:
+
+```yaml
+schema_version: helix-splits/v2
+source: examples.jsonl
+id_field: id
+train:
+    - sample-a
+val:
+    - sample-b
+test:
+    - sample-c
+```
+
+Every source record must contain a unique, non-empty string in `id_field`, and
+every record must occur exactly once across the three partitions. Helix rejects
+duplicate source IDs, duplicate or unknown split references, and unassigned
+records. Legacy manifests containing integer row indices remain supported for
+existing consumers.
+
 ## License
 
 Helix is source-available under the

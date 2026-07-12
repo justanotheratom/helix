@@ -14,6 +14,7 @@ from rich.console import Console
 
 from . import api, bundle
 from .config import job_traces_url, job_ui_url, repo_root, user_id
+from .dataset_materialize import materialize_compile_datasets
 from .infer import infer_all, infer_program_version, infer_dataset_split
 
 
@@ -88,7 +89,9 @@ def cmd_submit_compile(args: argparse.Namespace) -> int:
                 entry["auto_eval_config_path"] = str(candidate.relative_to(repo_root()))
         configs_meta.append(entry)
 
+    materialized_paths = materialize_compile_datasets(config_rels)
     overlay_paths = bundle.collect_overlay_paths(base_sha)
+    overlay_paths = sorted(set(overlay_paths) | set(materialized_paths))
     bundle_bytes = bundle.build_tarball(overlay_paths, config_rels)
 
     metadata = {
@@ -132,7 +135,9 @@ def cmd_submit_eval(args: argparse.Namespace) -> int:
             }
         )
 
+    materialized_paths = materialize_compile_datasets(config_rels)
     overlay_paths = bundle.collect_overlay_paths(base_sha)
+    overlay_paths = sorted(set(overlay_paths) | set(materialized_paths))
     bundle_bytes = bundle.build_tarball(overlay_paths, config_rels)
 
     metadata = {

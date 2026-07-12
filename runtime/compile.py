@@ -440,8 +440,17 @@ def main():
                 if 'source' in splits_manifest:
                     dataset_source = splits_source.parent.parent / splits_manifest['source']
                     if dataset_source.exists():
-                        shutil.copy(dataset_source, compile_dir / "dataset.jsonl")
-                        print(f"Saved dataset.jsonl to {compile_dir}")
+                        if dataset_source.suffix in (".yaml", ".yml"):
+                            from data_loader import load_dataset
+                            rows = load_dataset(str(dataset_source))
+                            with open(compile_dir / "dataset.jsonl", "w", encoding="utf-8") as out:
+                                import json
+                                for row in rows:
+                                    out.write(json.dumps(row, ensure_ascii=False) + "\n")
+                            print(f"Saved dataset.jsonl to {compile_dir}")
+                        else:
+                            shutil.copy(dataset_source, compile_dir / "dataset.jsonl")
+                            print(f"Saved dataset.jsonl to {compile_dir}")
     except Exception as e:
         print(f"Warning: Could not save dataset/splits: {e}")
 
