@@ -18,6 +18,20 @@ export interface CompileProgress {
   bestValset: number | null;
   paretoFront: number | null;
   wins: number;
+  bestPrompt: BestPromptEvent | null;
+}
+
+export interface PromptSnapshot {
+  candidateIdx: number;
+  iteration: number;
+  score: number;
+  prompts: Record<string, string>;
+}
+
+export interface BestPromptEvent {
+  previous: PromptSnapshot | null;
+  current: PromptSnapshot;
+  scoreDelta: number | null;
 }
 
 export interface EvalProgress {
@@ -50,6 +64,7 @@ const RE_ITER_NEW = /Iteration (\d+):\s*New program candidate index/g;
 const RE_BEST_VAL = /Best valset aggregate score so far:\s*([\d.]+)/g;
 const RE_PARETO = /Valset pareto front aggregate score:?\s*([\d.]+)/g;
 const RE_GEPA_BUDGET = /Running GEPA for approx (\d+) metric calls/;
+const RE_BEST_PROMPT = /^HELIX_BEST_PROMPT (\{.*\})$/gm;
 const RE_COMPILE_DONE = /Compilation complete|=== eval start/;
 const RE_EVAL_DONE = /=== done|Eval complete|Saved results/;
 const RE_EVAL_STATUS =
@@ -86,6 +101,15 @@ export function parseProgress(lines: string[]): Progress {
   const bestVals = [...text.matchAll(RE_BEST_VAL)];
   const paretos = [...text.matchAll(RE_PARETO)];
   const wins = [...text.matchAll(RE_ITER_NEW)].length;
+  const promptEvents = [...text.matchAll(RE_BEST_PROMPT)]
+    .map((m) => {
+      try {
+        return JSON.parse(m[1]) as BestPromptEvent;
+      } catch {
+        return null;
+      }
+    })
+    .filter((event): event is BestPromptEvent => event !== null);
 
   let compile: CompileProgress | null = null;
   if (chosen || iters.length || budgetM) {
@@ -103,6 +127,7 @@ export function parseProgress(lines: string[]): Progress {
       bestValset: bestVals.length ? parseFloat(bestVals[bestVals.length - 1][1]) : null,
       paretoFront: paretos.length ? parseFloat(paretos[paretos.length - 1][1]) : null,
       wins,
+      bestPrompt: promptEvents.length ? promptEvents[promptEvents.length - 1] : null,
     };
   }
 

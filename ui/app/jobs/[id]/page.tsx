@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { api, Artifact, Job } from "@/lib/api";
-import { parseProgress, Progress } from "@/lib/progress";
+import { BestPromptEvent, CompileProgress, parseProgress, Progress } from "@/lib/progress";
 import { formatLocalTimestamp } from "@/lib/time";
 
 function Bar({ pct, tone = "accent" }: { pct: number | null; tone?: string }) {
@@ -59,6 +59,7 @@ function ProgressView({ p, status }: { p: Progress; status: string }) {
             <Stat label="new candidates" value={c.wins} />
             {c.budget != null && <Stat label="budget (calls)" value={c.budget.toLocaleString()} />}
           </div>
+          {c.bestPrompt && <BestPromptDiff event={c.bestPrompt} />}
         </div>
       )}
 
@@ -89,6 +90,93 @@ function ProgressView({ p, status }: { p: Progress; status: string }) {
       )}
     </section>
   );
+}
+
+type DiffLine = { kind: "same" | "add" | "remove"; text: string };
+
+function lineDiff(before: string, after: string): DiffLine[] {
+  const a = before.split("\n");
+  const b = after.split("\n");
+  const dp = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
+  for (let i = a.length - 1; i >= 0; i -= 1) {
+    for (let j = b.length - 1; j >= 0; j -= 1) {
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const out: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      out.push({ kind: "same", text: a[i] }); i += 1; j += 1;
+    } else if (j < b.length && (i === a.length || dp[i][j + 1] >= dp[i + 1][j])) {
+      out.push({ kind: "add", text: b[j] }); j += 1;
+    } else {
+      out.push({ kind: "remove", text: a[i] }); i += 1;
+    }
+  }
+  return out;
+}
+
+function BestPromptDiff({ event }: { event: BestPromptEvent }) {
+  const components = Object.keys(event.current.prompts).sort();
+  const [selected, setSelected] = useState(components[0] ?? "");
+  const component = components.includes(selected) ? selected : components[0] ?? "";
+  const previousPrompt = event.previous?.prompts[component] ?? "";
+  const currentPrompt = event.current.prompts[component] ?? "";
+  const diff = useMemo(
+    () => (event.previous ? lineDiff(previousPrompt, currentPrompt) : []),
+    [event.previous, previousPrompt, currentPrompt],
+  );
+  const score = (value: number) => `${(value <= 1 ? value * 100 : value).toFixed(2)}%`;
+
+  return (
+    <div className="prompt-diff">
+      <div className="prompt-diff-head">
+        <div>
+          <strong>Best valset system-prompt diff</strong>
+          <span className="muted">
+            {event.previous
+              ? `candidate ${event.previous.candidateIdx} → ${event.current.candidateIdx} · ${score(event.previous.score)} → ${score(event.current.score)}`
+              : `seed candidate ${event.current.candidateIdx} · ${score(event.current.score)}`}
+            {` · iteration ${event.current.iteration}`}
+            {event.scoreDelta != null && ` (${event.scoreDelta >= 0 ? "+" : ""}${score(event.scoreDelta)})`}
+          </span>
+        </div>
+        {components.length > 1 && (
+          <select value={component} onChange={(e) => setSelected(e.target.value)}>
+            {components.map((name) => <option key={name}>{name}</option>)}
+          </select>
+        )}
+      </div>
+      <div className="phase-title">{component || "predictor"}</div>
+      {!event.previous ? (
+        <p className="muted">Seed prompt recorded. The first improvement will show its diff here.</p>
+      ) : (
+        <pre className="prompt-diff-body" aria-label="Best prompt unified diff">
+          {diff.map((line, index) => (
+            <span key={`${index}-${line.kind}`} className={`diff-${line.kind}`}>
+              {line.kind === "add" ? "+ " : line.kind === "remove" ? "- " : "  "}{line.text}{"\n"}
+            </span>
+          ))}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function summaryProgress(job: Job | null): Progress | null {
+  const value = job?.summary?.progress;
+  return value && typeof value === "object" ? (value as Progress) : null;
+}
+
+function mergeProgress(stored: Progress | null, live: Progress): Progress {
+  if (!stored) return live;
+  if (!live.compile && !live.eval) return stored;
+  const compile = live.compile
+    ? ({ ...stored.compile, ...live.compile, bestPrompt: live.compile.bestPrompt ?? stored.compile?.bestPrompt ?? null } as CompileProgress)
+    : stored.compile;
+  return { ...stored, ...live, compile, eval: live.eval ?? stored.eval };
 }
 
 export default function JobDetail({ params }: { params: { id: string } }) {
@@ -164,7 +252,10 @@ export default function JobDetail({ params }: { params: { id: string } }) {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [logLines]);
 
-  const progress = useMemo(() => parseProgress(logLines), [logLines]);
+  const progress = useMemo(
+    () => mergeProgress(summaryProgress(job), parseProgress(logLines)),
+    [job, logLines],
+  );
 
   if (err) return <p style={{ color: "var(--bad)" }}>error: {err}</p>;
   if (!job) return <p>loading…</p>;

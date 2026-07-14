@@ -61,6 +61,17 @@ tr:hover td { background: var(--panel); }
 .pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: 8px; animation: pulse 1.2s ease-in-out infinite; vertical-align: middle; }
 @keyframes pulse { 0%,100% { opacity: .3; } 50% { opacity: 1; } }
 .err-banner { margin-top: 12px; padding: 8px 10px; border: 1px solid var(--bad); border-radius: 6px; color: var(--bad); font-size: 13px; }
+.prompt-diff { margin-top: 14px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: #0a0d12; }
+.prompt-diff-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 9px 11px; border-bottom: 1px solid var(--border); background: var(--panel-2); font-size: 13px; }
+.prompt-diff-head strong { display: block; }
+.prompt-diff-head .muted { margin-left: 8px; font-size: 11px; }
+.prompt-diff > .phase-title { padding: 8px 11px 0; }
+.prompt-diff > p { padding: 0 11px 8px; }
+pre.prompt-diff-body { margin: 0; max-height: 520px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.5; }
+.prompt-diff-body span { display: block; padding: 0 10px; min-height: 1.5em; }
+.prompt-diff-body .diff-add { color: #aff5b4; background: rgba(46, 160, 67, .18); }
+.prompt-diff-body .diff-remove { color: #ffdcd7; background: rgba(248, 81, 73, .18); }
+.prompt-diff-body .diff-same { color: var(--muted); }
 
 /* Inline progress in the jobs table */
 .run-progress { display: flex; flex-direction: column; gap: 4px; min-width: 280px; }

@@ -10,6 +10,7 @@ one local file read per tick).
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import Any
@@ -23,6 +24,7 @@ RE_ITER_NEW = re.compile(r"Iteration (\d+):\s*New program candidate index")
 RE_BEST_VAL = re.compile(r"Best valset aggregate score so far:\s*([\d.]+)")
 RE_PARETO = re.compile(r"Valset pareto front aggregate score:?\s*([\d.]+)")
 RE_GEPA_BUDGET = re.compile(r"Running GEPA for approx (\d+) metric calls")
+RE_BEST_PROMPT = re.compile(r"^HELIX_BEST_PROMPT (\{.*\})$", re.MULTILINE)
 RE_COMPILE_DONE = re.compile(r"Compilation complete|=== eval start")
 RE_EVAL_DONE = re.compile(r"=== done|Eval complete|Saved results")
 RE_EVAL_STATUS = re.compile(
@@ -65,6 +67,12 @@ def parse_text(text: str) -> dict[str, Any]:
     best = [m for m in RE_BEST_VAL.finditer(text)]
     pareto = [m for m in RE_PARETO.finditer(text)]
     wins = sum(1 for _ in RE_ITER_NEW.finditer(text))
+    prompt_events = []
+    for match in RE_BEST_PROMPT.finditer(text):
+        try:
+            prompt_events.append(json.loads(match.group(1)))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
 
     if chosen or iters or budget:
         cur = int(chosen.group(1)) if chosen else None
@@ -80,6 +88,7 @@ def parse_text(text: str) -> dict[str, Any]:
             "bestValset": float(best[-1].group(1)) if best else None,
             "paretoFront": float(pareto[-1].group(1)) if pareto else None,
             "wins": wins,
+            "bestPrompt": prompt_events[-1] if prompt_events else None,
         }
 
     # --- eval ---------------------------------------------------------------

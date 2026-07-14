@@ -139,6 +139,9 @@ uv run --project ~/GitHub/helix helix up
 - **Reproducible env**: the worker builds a `uv`-locked venv from the
   snapshot's `uv.lock` (the authoritative job environment) and runs the
   entrypoints with it.
+- **Live GEPA prompt evolution**: compile progress records each new aggregate-
+  valset winner and the job page shows its system-prompt diff against the
+  previous best, per predictor. The last diff remains in the durable summary.
 - **out_of_band data**: large data declared in `[snapshot].out_of_band` is
   shipped as separate content-addressed blobs and mounted as extra overlay
   lowerdirs.

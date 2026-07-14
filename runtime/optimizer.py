@@ -265,6 +265,15 @@ def optimize_program(
 
     # Handle GEPA-specific parameters
     if config.optimizer == "GEPA":
+        from best_prompt_progress import install_best_prompt_callback
+
+        # GEPA's public callback events carry the full candidate, aggregate
+        # valset score, and is-best flag. Emit those winners into stdout so the
+        # worker can expose prompt evolution live without reading pickle state.
+        gepa_kwargs = dict(optimizer_params.get("gepa_kwargs") or {})
+        install_best_prompt_callback(gepa_kwargs)
+        optimizer_params["gepa_kwargs"] = gepa_kwargs
+
         if "instruction_proposer_config" in optimizer_params:
             proposer_config = optimizer_params.pop("instruction_proposer_config")
             if proposer_config == "multimodal":
