@@ -10,6 +10,13 @@ required:
   - data
 
 properties:
+  num_threads:
+    type: integer
+    minimum: 1
+    maximum: 256
+    default: 1
+    description: "Maximum number of independent dataset examples evaluated concurrently"
+
   metric:
     type: object
     description: "Evaluation metric configuration"

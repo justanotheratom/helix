@@ -4,8 +4,9 @@ Provides latency tracking via callbacks and usage aggregation helpers.
 """
 
 import time
+import threading
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List
 
 import litellm
 from dspy.utils.callback import BaseCallback
@@ -43,6 +44,7 @@ litellm.drop_params = True
 #
 # Idempotent: guarded by `_lfm_or_patched` so re-imports don't double-wrap.
 
+
 def _wrap_or_inject_usage(original: Callable) -> Callable:
     def wrapper(*args, **kwargs):
         model = kwargs.get("model", "") or ""
@@ -58,6 +60,7 @@ def _wrap_or_inject_usage(original: Callable) -> Callable:
                 eb["usage"]["include"] = True
             kwargs["extra_body"] = eb
         return original(*args, **kwargs)
+
     return wrapper
 
 
@@ -76,67 +79,79 @@ class LatencyTracker(BaseCallback):
         self.lm_latencies: List[Dict[str, Any]] = []
         self.module_latencies: defaultdict = defaultdict(list)
         self._start_times: Dict[str, float] = {}
+        self._lock = threading.RLock()
 
     def on_lm_start(self, call_id, instance, inputs):
-        self._start_times[call_id] = {
-            "start": time.time(),
-            "model": getattr(instance, "model", "unknown")
-        }
+        with self._lock:
+            self._start_times[call_id] = {
+                "start": time.time(),
+                "model": getattr(instance, "model", "unknown"),
+            }
 
     def on_lm_end(self, call_id, outputs, exception):
-        if call_id in self._start_times:
-            start_info = self._start_times[call_id]
-            latency = time.time() - start_info["start"]
-            self.lm_latencies.append({
-                "call_id": call_id,
-                "latency_seconds": latency,
-                "model": start_info["model"],
-                "exception": exception is not None
-            })
-            del self._start_times[call_id]
+        with self._lock:
+            if call_id in self._start_times:
+                start_info = self._start_times[call_id]
+                latency = time.time() - start_info["start"]
+                self.lm_latencies.append(
+                    {
+                        "call_id": call_id,
+                        "latency_seconds": latency,
+                        "model": start_info["model"],
+                        "exception": exception is not None,
+                    }
+                )
+                del self._start_times[call_id]
 
     def on_module_start(self, call_id, instance, inputs):
-        self._start_times[f"module_{call_id}"] = {
-            "start": time.time(),
-            "module_name": instance.__class__.__name__
-        }
+        with self._lock:
+            self._start_times[f"module_{call_id}"] = {
+                "start": time.time(),
+                "module_name": instance.__class__.__name__,
+            }
 
     def on_module_end(self, call_id, outputs, exception):
-        module_key = f"module_{call_id}"
-        if module_key in self._start_times:
-            start_info = self._start_times[module_key]
-            latency = time.time() - start_info["start"]
-            self.module_latencies[start_info["module_name"]].append(latency)
-            del self._start_times[module_key]
+        with self._lock:
+            module_key = f"module_{call_id}"
+            if module_key in self._start_times:
+                start_info = self._start_times[module_key]
+                latency = time.time() - start_info["start"]
+                self.module_latencies[start_info["module_name"]].append(latency)
+                del self._start_times[module_key]
 
     def get_total_lm_latency(self) -> float:
-        return sum(entry["latency_seconds"] for entry in self.lm_latencies)
+        with self._lock:
+            return sum(entry["latency_seconds"] for entry in self.lm_latencies)
 
     def get_average_lm_latency(self) -> float:
-        if not self.lm_latencies:
-            return 0.0
-        return self.get_total_lm_latency() / len(self.lm_latencies)
+        with self._lock:
+            if not self.lm_latencies:
+                return 0.0
+            return self.get_total_lm_latency() / len(self.lm_latencies)
 
     def get_lm_call_count(self) -> int:
-        return len(self.lm_latencies)
+        with self._lock:
+            return len(self.lm_latencies)
 
     def get_module_stats(self) -> Dict[str, Dict[str, Any]]:
-        stats = {}
-        for module_name, latencies in self.module_latencies.items():
-            if latencies:
-                stats[module_name] = {
-                    "count": len(latencies),
-                    "total_seconds": sum(latencies),
-                    "average_seconds": sum(latencies) / len(latencies),
-                    "min_seconds": min(latencies),
-                    "max_seconds": max(latencies)
-                }
-        return stats
+        with self._lock:
+            stats = {}
+            for module_name, latencies in self.module_latencies.items():
+                if latencies:
+                    stats[module_name] = {
+                        "count": len(latencies),
+                        "total_seconds": sum(latencies),
+                        "average_seconds": sum(latencies) / len(latencies),
+                        "min_seconds": min(latencies),
+                        "max_seconds": max(latencies),
+                    }
+            return stats
 
     def reset(self):
-        self.lm_latencies.clear()
-        self.module_latencies.clear()
-        self._start_times.clear()
+        with self._lock:
+            self.lm_latencies.clear()
+            self.module_latencies.clear()
+            self._start_times.clear()
 
 
 def aggregate_usage(usage_data: Dict[str, Dict[str, int]]) -> Dict[str, int]:
@@ -149,11 +164,7 @@ def aggregate_usage(usage_data: Dict[str, Dict[str, int]]) -> Dict[str, int]:
     Returns:
         Dict with total_tokens, prompt_tokens, completion_tokens
     """
-    totals = {
-        "prompt_tokens": 0,
-        "completion_tokens": 0,
-        "total_tokens": 0
-    }
+    totals = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     for model_usage in usage_data.values():
         totals["prompt_tokens"] += model_usage.get("prompt_tokens", 0)
         totals["completion_tokens"] += model_usage.get("completion_tokens", 0)
@@ -193,4 +204,3 @@ def calculate_cost_from_usage(usage_data: Dict[str, Dict[str, int]]) -> float:
         if cost is not None:
             total_cost += cost
     return total_cost
-
