@@ -50,6 +50,24 @@ helix submit eval <base>/<overlay-root>/<p>/<v>/eval.config.<dataset>_<split>-te
 The CLI prints `{job_id, run_label, ui_url, traces_url}`. Paste both URLs
 into chat.
 
+Set top-level `num_threads` in the submitted eval config to bound concurrent
+dataset examples (default `1` preserves sequential behavior):
+
+```yaml
+num_threads: 8
+cache: false
+metric:
+  module: programs.example.v01.metrics
+  function: metric
+data:
+  # ...
+```
+
+Helix uses DSPy's `ParallelExecutor`, so DSPy thread-local settings and usage
+tracking are isolated per example. Each example remains internally sequential;
+this is online concurrency, not a provider's discounted asynchronous Batch API.
+Choose a value that fits the model provider's request/token rate limits.
+
 - Helix downloads the parent compile's `program.pkl` and reseeds the `data`
   symlink convention inside the worker overlay — the consumer's
   `evaluate.py` runs unchanged.

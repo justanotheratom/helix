@@ -170,6 +170,29 @@ duplicate source IDs, duplicate or unknown split references, and unassigned
 records. Legacy manifests containing integer row indices remain supported for
 existing consumers.
 
+## Parallel evaluation
+
+Eval configs can run independent dataset examples concurrently through DSPy's
+thread-aware executor. Sequential execution remains the default; opt in with a
+top-level `num_threads` value:
+
+```yaml
+num_threads: 8
+cache: false
+metric:
+  module: programs.example.v01.metrics
+  function: metric
+data:
+  source: data/001.jsonl
+  splits: data/splits/001_001.yaml
+  split_name: test
+  program_inputs: [input]
+```
+
+Results are appended as workers finish for resumability and normalized to
+dataset order when the eval completes. This limits concurrent online examples;
+it does not use a provider's asynchronous discounted Batch API.
+
 ## License
 
 Helix is source-available under the
