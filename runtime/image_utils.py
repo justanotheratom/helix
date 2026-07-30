@@ -174,3 +174,66 @@ def get_image_url(image_path: Path, base_url: str, relative_to: Path) -> str:
     
     return f"{base_url}/{encoded_path}"
 
+
+
+MEDIA_RESOLUTIONS = ("low", "medium", "high")
+
+
+def install_media_resolution_hook(media_resolution: Optional[str]) -> bool:
+    """Apply Gemini's media_resolution to every outgoing image part.
+
+    media_resolution caps the tokens Gemini 3.x allocates per image (low ~280,
+    medium ~560, high/default ~1120), independent of the image's pixel
+    dimensions. litellm exposes it as the OpenAI-style `image_url.detail` field
+    and maps it to MEDIA_RESOLUTION_* for gemini-3+.
+
+    This has to be applied at the litellm boundary rather than on the dspy.Image
+    we construct: dspy.Image.format() emits only {"url": ...} with no way to
+    carry `detail`, and even a hand-injected `detail` is discarded by dspy's
+    typed LMMessage coercion before the provider call (measured: 106 injections
+    on a 62-example eval, litellm received image_url keys ['url'] only, and
+    prompt tokens were unchanged at 1126/image for every detail value). Wrapping
+    litellm.completion is the only point that reaches the provider payload.
+
+    No-op when media_resolution is None. Idempotent.
+
+    Returns True if a hook was installed.
+    """
+    if not media_resolution:
+        return False
+    if media_resolution not in MEDIA_RESOLUTIONS:
+        raise ValueError(
+            f"image_config.media_resolution must be one of {MEDIA_RESOLUTIONS}, got {media_resolution!r}"
+        )
+
+    import litellm
+
+    def _wrap(fn):
+        if getattr(fn, "_helix_media_resolution", None):
+            return fn
+
+        def wrapped(*args, **kwargs):
+            messages = kwargs.get("messages")
+            if messages is None and len(args) > 1:
+                messages = args[1]
+            if messages:
+                for message in messages:
+                    content = message.get("content") if isinstance(message, dict) else None
+                    if not isinstance(content, list):
+                        continue
+                    for part in content:
+                        if (
+                            isinstance(part, dict)
+                            and part.get("type") == "image_url"
+                            and isinstance(part.get("image_url"), dict)
+                        ):
+                            part["image_url"]["detail"] = media_resolution
+            return fn(*args, **kwargs)
+
+        wrapped._helix_media_resolution = media_resolution
+        return wrapped
+
+    litellm.completion = _wrap(litellm.completion)
+    litellm.acompletion = _wrap(litellm.acompletion)
+    print(f"media_resolution={media_resolution} (applied to outgoing image parts)")
+    return True

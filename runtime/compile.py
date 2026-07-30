@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 from optimizer import optimize_program
 from config_utils import inject_config_to_env
 from tracking import LatencyTracker
-from image_utils import encode_image_to_base64, get_image_url
+from image_utils import encode_image_to_base64, get_image_url, install_media_resolution_hook
 from program_loader import SelfContainedProgram, load_compiled_program
 from module_loader import load_object
 from data_loader import load_from_manifest
@@ -519,6 +519,8 @@ def main():
         # Get image config for converting image paths
         image_config = config.get('program', {}).get('args', {}).get('image_config', {})
         convert_images = data_config.get('convert_images', True)
+
+        install_media_resolution_hook(image_config.get('media_resolution'))
 
         trainset = convert_raw_data_to_examples(
             raw_train_data, data_config, config_base_dir, image_config, convert_images

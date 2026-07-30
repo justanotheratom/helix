@@ -8,7 +8,7 @@ import threading
 import time
 import yaml
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 # Repo-agnostic path resolution (Helix). cwd = consumer base dir;
 # PYTHONPATH = base : helix_runtime. _this_dir keeps flat sibling imports
@@ -208,6 +208,29 @@ def print_progress(
         flush=True,
     )
 
+
+
+def _compiled_media_resolution(compilation_dir: Path) -> Optional[str]:
+    """Read program.args.image_config.media_resolution from the compile config
+    that produced this artifact.
+
+    Program-agnostic on purpose: Helix does not introspect the program object,
+    it just reads the config the compile ran with. Returns None when absent.
+    """
+    for candidate in (compilation_dir / "compile.config.yaml",
+                      compilation_dir / "compile" / "compile.config.yaml"):
+        if not candidate.exists():
+            continue
+        try:
+            cfg = yaml.safe_load(candidate.read_text()) or {}
+        except Exception as exc:
+            print(f"Warning: could not read {candidate}: {exc}")
+            continue
+        image_config = (
+            (cfg.get("program") or {}).get("args", {}).get("image_config") or {}
+        )
+        return image_config.get("media_resolution")
+    return None
 
 def main():
     # Secrets normally arrive via container env; honour optional .env files
@@ -426,6 +449,15 @@ def main():
     # Get image config for converting image paths (from compile config if available)
     image_config = data_config.get("image_config", {})
     convert_images = data_config.get("convert_images", True)
+
+    # media_resolution is a property of the compiled program's serving config,
+    # like its model and adapter — so it is read from the compile config that
+    # produced this artifact, not from the eval config. Applied at the litellm
+    # boundary because dspy cannot carry it on the Image; see
+    # install_media_resolution_hook.
+    from image_utils import install_media_resolution_hook
+
+    install_media_resolution_hook(_compiled_media_resolution(compilation_dir))
 
     dataset = convert_raw_data_to_examples(
         raw_data, data_config, config_path.parent, image_config, convert_images
