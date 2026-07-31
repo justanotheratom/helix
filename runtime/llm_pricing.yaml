@@ -27,6 +27,17 @@ _last_updated: "2026-06-29"
 
 openai:
   _source: https://developers.openai.com/api/docs/pricing
+  # [production] GPT-5.6 models. Luna repriced 2026-07-30 (was 1.00/6.00 at the
+  # Jul 9 launch); these are the rates on the current developer docs model page.
+  gpt-5.6-sol:
+    input: 5.00
+    output: 30.00
+  gpt-5.6-terra:
+    input: 2.00
+    output: 12.00
+  gpt-5.6-luna:
+    input: 0.20
+    output: 1.20
   # [production] GPT-5.5 models
   gpt-5.5:
     input: 5.00
