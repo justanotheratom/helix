@@ -114,6 +114,7 @@ services:
             GROQ_API_KEY: ${GROQ_API_KEY:-}
             GROK_API_KEY: ${GROK_API_KEY:-}
             TOGETHERAI_API_KEY: ${TOGETHERAI_API_KEY:-}
+            META_API_KEY: ${META_API_KEY:-}
             HF_TOKEN: ${HF_TOKEN:-}
             # Vertex AI tuned-Gemini access (us/eu multi-region endpoints, via
             # google-genai). SA key JSON in-env since the container has no gcloud
