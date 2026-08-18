@@ -140,6 +140,13 @@ grep -E '^(OPENAI_API_KEY|GEMINI_API_KEY|ANTHROPIC_API_KEY)=..*' ~/path/to/local
   | ssh -i ~/.ssh/helix_hetzner root@<IP> 'cat >> /opt/helix/deploy/.env'
 ```
 
+> **If you deploy via the GitHub workflow, do not add keys this way.** The
+> `Deploy` workflow renders the host `.env` *in full* from the `production`
+> environment's secrets and variables and swaps the file atomically, so
+> anything appended over ssh is discarded on the next deploy. Add the key as a
+> GitHub Environment secret instead — see
+> [Adding a provider key](#adding-a-provider-key).
+
 ---
 
 ## 4. Build + bring up the stack (with the small-host overlay)
@@ -298,6 +305,36 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 > of a shared token.
 
 ---
+
+## Adding a provider key
+
+A key reaches a running job through four hops, and **all of them have to know
+its name**:
+
+1. `production` GitHub Environment secret → the `Deploy` workflow renders every
+   secret except `HELIX_DEPLOY_*` into the host `.env`.
+2. `deploy/docker-compose.yml` → the `helix-worker` `environment:` block is an
+   explicit allowlist. A key in `.env` that is not named here never reaches the
+   container.
+3. `worker/helix_worker/runner.py` → copies the worker env into the job
+   subprocess wholesale, no filtering.
+4. `runtime/optimizer.py` → `os.getenv(lm_config["api_key_env"])`, raising if
+   the var is unset.
+
+So adding a provider takes two changes plus a deploy:
+
+```yaml
+# deploy/docker-compose.yml, under helix-worker.environment
+NEWPROVIDER_API_KEY: ${NEWPROVIDER_API_KEY:-}
+```
+
+- add the same name to `deploy/.env.example` (documentation only), and
+- add the secret to the `production` GitHub Environment — **single-line values
+  only**, since the `.env` is line-based.
+
+Then push to `master`. Note the workflow's safety guard aborts if the rendered
+`.env` has fewer than 15 keys or is missing a stateful-service secret, so the
+`production` environment must hold the complete set, not just the new key.
 
 ## 6. Day-to-day ops
 
