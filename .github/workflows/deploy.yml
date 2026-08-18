@@ -44,20 +44,60 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      # Render the host .env entirely from GitHub Environment secrets + variables
-      # (single source of truth). Every secret/variable in the `production`
-      # environment becomes a KEY=VALUE line EXCEPT the SSH connection secrets
-      # (HELIX_DEPLOY_*) and the implicit github_token. A safety guard aborts
-      # BEFORE touching the host if required stateful-service secrets are absent
-      # (so a partial/empty secret set can never wipe a working .env), and the
-      # existing host .env is backed up before the atomic swap.
+      # Render the host .env from GitHub Environment secrets + variables (single
+      # source of truth). Each name is referenced explicitly rather than via
+      # toJSON(secrets): serialising the whole secrets context trips GitHub's
+      # malicious-workflow detection, which blocked every deploy from
+      # 2026-07-30 onward. Adding a secret therefore means adding it here too.
+      #
+      # A safety guard aborts BEFORE touching the host if required
+      # stateful-service secrets are absent (so a partial/empty secret set can
+      # never wipe a working .env), and the existing host .env is backed up
+      # before the atomic swap.
       #
       # NOTE: secret values must be single-line (the .env is line-based). Store
       # the Vertex service-account key as COMPACT one-line JSON.
       - name: Render production .env from GitHub secrets/variables
         env:
-          SECRETS_JSON: ${{ toJSON(secrets) }}
-          VARS_JSON: ${{ toJSON(vars) }}
+          # Secrets and variables are referenced one by one on purpose; see the
+          # comment on the step above.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          HELIX_MINIO_ROOT_PASSWORD: ${{ secrets.HELIX_MINIO_ROOT_PASSWORD }}
+          HELIX_POSTGRES_PASSWORD: ${{ secrets.HELIX_POSTGRES_PASSWORD }}
+          HELIX_REDIS_PASSWORD: ${{ secrets.HELIX_REDIS_PASSWORD }}
+          LANGFUSE_CLICKHOUSE_PASSWORD: ${{ secrets.LANGFUSE_CLICKHOUSE_PASSWORD }}
+          LANGFUSE_ENCRYPTION_KEY: ${{ secrets.LANGFUSE_ENCRYPTION_KEY }}
+          LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${{ secrets.LANGFUSE_INIT_PROJECT_PUBLIC_KEY }}
+          LANGFUSE_INIT_PROJECT_SECRET_KEY: ${{ secrets.LANGFUSE_INIT_PROJECT_SECRET_KEY }}
+          LANGFUSE_INIT_USER_PASSWORD: ${{ secrets.LANGFUSE_INIT_USER_PASSWORD }}
+          LANGFUSE_MINIO_ROOT_PASSWORD: ${{ secrets.LANGFUSE_MINIO_ROOT_PASSWORD }}
+          LANGFUSE_NEXTAUTH_SECRET: ${{ secrets.LANGFUSE_NEXTAUTH_SECRET }}
+          LANGFUSE_POSTGRES_PASSWORD: ${{ secrets.LANGFUSE_POSTGRES_PASSWORD }}
+          LANGFUSE_REDIS_PASSWORD: ${{ secrets.LANGFUSE_REDIS_PASSWORD }}
+          LANGFUSE_SALT: ${{ secrets.LANGFUSE_SALT }}
+          META_API_KEY: ${{ secrets.META_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TEST_SECRET: ${{ secrets.TEST_SECRET }}
+          HELIX_HOST_PORT: ${{ vars.HELIX_HOST_PORT }}
+          HELIX_MINIO_ROOT_USER: ${{ vars.HELIX_MINIO_ROOT_USER }}
+          HELIX_WORKER_REPLICAS: ${{ vars.HELIX_WORKER_REPLICAS }}
+          LANGFUSE_INIT_ORG_ID: ${{ vars.LANGFUSE_INIT_ORG_ID }}
+          LANGFUSE_INIT_ORG_NAME: ${{ vars.LANGFUSE_INIT_ORG_NAME }}
+          LANGFUSE_INIT_PROJECT_ID: ${{ vars.LANGFUSE_INIT_PROJECT_ID }}
+          LANGFUSE_INIT_PROJECT_NAME: ${{ vars.LANGFUSE_INIT_PROJECT_NAME }}
+          LANGFUSE_INIT_USER_EMAIL: ${{ vars.LANGFUSE_INIT_USER_EMAIL }}
+          LANGFUSE_INIT_USER_NAME: ${{ vars.LANGFUSE_INIT_USER_NAME }}
+          LANGFUSE_MINIO_ROOT_USER: ${{ vars.LANGFUSE_MINIO_ROOT_USER }}
+          LANGFUSE_SAMPLE_RATE: ${{ vars.LANGFUSE_SAMPLE_RATE }}
+          VERTEX_LOCATION: ${{ vars.VERTEX_LOCATION }}
+          VERTEX_PROJECT: ${{ vars.VERTEX_PROJECT }}
           SSH_HOST: ${{ secrets.HELIX_DEPLOY_HOST }}
           SSH_PORT: ${{ secrets.HELIX_DEPLOY_PORT }}
           SSH_USER: ${{ secrets.HELIX_DEPLOY_USER }}
@@ -68,14 +108,54 @@ jobs:
           port="${SSH_PORT:-22}"
           path="${DEPLOY_PATH:-/opt/helix}"
 
-          # Connection-only secrets and the Actions token never belong in .env.
-          jq -r '
-            to_entries[]
-            | select(.key | test("^HELIX_DEPLOY_") | not)
-            | select(.key | ascii_downcase != "github_token")
-            | "\(.key)=\(.value)"
-          ' <<< "$SECRETS_JSON" > rendered.env
-          jq -r 'to_entries[] | "\(.key)=\(.value)"' <<< "$VARS_JSON" >> rendered.env
+          # Connection-only secrets (HELIX_DEPLOY_*) are deliberately absent
+          # from this list: they configure the ssh hop, not the stack.
+          keys="
+            ANTHROPIC_API_KEY
+            CEREBRAS_API_KEY
+            CF_TUNNEL_TOKEN
+            GEMINI_API_KEY
+            GOOGLE_APPLICATION_CREDENTIALS_JSON
+            GROK_API_KEY
+            GROQ_API_KEY
+            HELIX_MINIO_ROOT_PASSWORD
+            HELIX_POSTGRES_PASSWORD
+            HELIX_REDIS_PASSWORD
+            LANGFUSE_CLICKHOUSE_PASSWORD
+            LANGFUSE_ENCRYPTION_KEY
+            LANGFUSE_INIT_PROJECT_PUBLIC_KEY
+            LANGFUSE_INIT_PROJECT_SECRET_KEY
+            LANGFUSE_INIT_USER_PASSWORD
+            LANGFUSE_MINIO_ROOT_PASSWORD
+            LANGFUSE_NEXTAUTH_SECRET
+            LANGFUSE_POSTGRES_PASSWORD
+            LANGFUSE_REDIS_PASSWORD
+            LANGFUSE_SALT
+            META_API_KEY
+            OPENAI_API_KEY
+            OPENROUTER_API_KEY
+            TEST_SECRET
+            HELIX_HOST_PORT
+            HELIX_MINIO_ROOT_USER
+            HELIX_WORKER_REPLICAS
+            LANGFUSE_INIT_ORG_ID
+            LANGFUSE_INIT_ORG_NAME
+            LANGFUSE_INIT_PROJECT_ID
+            LANGFUSE_INIT_PROJECT_NAME
+            LANGFUSE_INIT_USER_EMAIL
+            LANGFUSE_INIT_USER_NAME
+            LANGFUSE_MINIO_ROOT_USER
+            LANGFUSE_SAMPLE_RATE
+            VERTEX_LOCATION
+            VERTEX_PROJECT
+          "
+
+          : > rendered.env
+          for k in $keys; do
+            v="${!k-}"
+            [ -n "$v" ] || continue
+            printf '%s=%s\n' "$k" "$v" >> rendered.env
+          done
 
           # --- Safety guard: never ship an empty/partial .env. These keys back
           # stateful services (Postgres/Redis/MinIO/Langfuse) whose volumes
